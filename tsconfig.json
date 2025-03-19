@@ -1,0 +1,11 @@
+{
+  "extends": "@devvit/public-api/devvit.tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "react",
+    "allowJs": true,
+    "lib": ["dom", "esnext"] // Added "dom" for window/document
+  },
+  "include": ["./src/**/*"],
+  "exclude": ["node_modules"] // Ensure node_modules isn’t checked
+}
