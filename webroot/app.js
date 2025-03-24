@@ -23788,6 +23788,8 @@ void main() {
   var platforms = [];
   var gameStarted = false;
   var isMobile = false;
+  var joystickPosition = { x: 0, y: 0 };
+  var touchJoystick = { active: false, startX: 0, startY: 0 };
   var builderMode = false;
   var buildingBlocks = [];
   var selectedBlockType = "platform";
@@ -23825,6 +23827,7 @@ void main() {
   var isMouseDown = false;
   var lastMouseX = 0;
   var lastMouseY = 0;
+  var isOverlayActive = false;
   function init() {
     console.log("Initializing Three.js scene...");
     isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -23846,6 +23849,9 @@ void main() {
     if (container) {
       container.appendChild(renderer.domElement);
       console.log("Renderer appended to #game-container");
+      window.addEventListener("blur", showOverlay);
+      container.addEventListener("mouseleave", showOverlay);
+      showOverlay();
     } else {
       console.error("No #game-container found!");
       return;
@@ -23856,24 +23862,13 @@ void main() {
       createCityEnvironment();
     }
     loadPlayerCharacter();
-    console.log("Setting up global event listeners");
-    document.addEventListener("keydown", (event) => {
-      console.log("Raw keydown event:", event.key);
-      handleKeyDown(event);
-    });
-    document.addEventListener("keyup", (event) => {
-      console.log("Raw keyup event:", event.key);
-      handleKeyUp(event);
-    });
-    window.addEventListener("resize", handleResize);
+    setupEventListeners();
     if (isMobile) {
       createMobileControls();
     }
     animate();
     window.parent.postMessage({ type: "webViewReady" }, "*");
     console.log("Sent webViewReady message");
-    localStorage.removeItem("builderState");
-    localStorage.removeItem("builderTemplate");
     console.log("Starting in builder mode");
     enterBuilderMode("medium");
   }
@@ -23982,7 +23977,65 @@ void main() {
     scene.add(player);
     sendPositionUpdate();
   }
+  function setupEventListeners() {
+    console.log("Setting up global event listeners");
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("blur", () => {
+      showOverlay();
+      resetAllControls();
+    });
+    document.addEventListener("mouseleave", () => {
+      showOverlay();
+      resetAllControls();
+    });
+    if (isMobile) {
+      const gameContainer = document.getElementById("game-container");
+      if (gameContainer) {
+        gameContainer.addEventListener("touchstart", handleTouchStart);
+        gameContainer.addEventListener("touchmove", handleTouchMove);
+        gameContainer.addEventListener("touchend", handleTouchEnd);
+      }
+    }
+    window.addEventListener("message", (event) => {
+      if (event.data.type === "startGame") {
+        gameStarted = true;
+        builderMode = false;
+        console.log("Game started");
+        if (player) player.visible = true;
+        const builderUI = document.getElementById("builder-ui");
+        if (builderUI) builderUI.remove();
+        const builderToolbar = document.getElementById("builder-toolbar");
+        if (builderToolbar) builderToolbar.remove();
+      } else if (event.data.type === "startBuilder") {
+        const template = event.data.data?.template || "medium";
+        localStorage.setItem("builderTemplate", template);
+        enterBuilderMode(template);
+        console.log("Builder mode started with template:", template);
+      }
+    });
+    setInterval(() => {
+      if (builderMode) {
+        saveBuilderState();
+      }
+    }, 3e4);
+  }
   function handleKeyDown(event) {
+    console.log(`Key pressed: ${event.key}, Builder mode: ${builderMode}, Game started: ${gameStarted}, Overlay active: ${isOverlayActive}`);
+    if (isOverlayActive) return;
+    if (event.key.toLowerCase() === "b") {
+      console.log("B key pressed - attempting to toggle modes");
+      if (builderMode) {
+        console.log("Exiting builder mode");
+        exitBuilderMode();
+      } else {
+        console.log("Entering builder mode");
+        const lastTemplate = localStorage.getItem("builderTemplate") || "medium";
+        enterBuilderMode(lastTemplate);
+      }
+      return;
+    }
     if (!builderMode) {
       switch (event.key.toLowerCase()) {
         case "w":
@@ -24061,6 +24114,7 @@ void main() {
     }
   }
   function handleKeyUp(event) {
+    if (isOverlayActive) return;
     if (!builderMode) {
       switch (event.key.toLowerCase()) {
         case "w":
@@ -24196,6 +24250,58 @@ void main() {
       container.appendChild(joystickElement);
       container.appendChild(jumpButton);
     }
+  }
+  function handleTouchStart(event) {
+    const touch = event.touches[0];
+    const joystick = document.getElementById("joystick");
+    if (joystick) {
+      const joystickRect = joystick.getBoundingClientRect();
+      if (touch.clientX >= joystickRect.left && touch.clientX <= joystickRect.right && touch.clientY >= joystickRect.top && touch.clientY <= joystickRect.bottom) {
+        touchJoystick.active = true;
+        touchJoystick.startX = joystickRect.left + joystickRect.width / 2;
+        touchJoystick.startY = joystickRect.top + joystickRect.height / 2;
+        updateJoystickPosition(touch.clientX, touch.clientY);
+      }
+    }
+  }
+  function handleTouchMove(event) {
+    if (touchJoystick.active) {
+      event.preventDefault();
+      const touch = event.touches[0];
+      updateJoystickPosition(touch.clientX, touch.clientY);
+    }
+  }
+  function handleTouchEnd() {
+    if (touchJoystick.active) {
+      touchJoystick.active = false;
+      joystickPosition = { x: 0, y: 0 };
+      const knob = document.getElementById("joystick-knob");
+      if (knob) {
+        knob.style.left = "35px";
+        knob.style.top = "35px";
+      }
+      keyState.forward = false;
+      keyState.backward = false;
+      keyState.left = false;
+      keyState.right = false;
+    }
+  }
+  function updateJoystickPosition(touchX, touchY) {
+    const deltaX = touchX - touchJoystick.startX;
+    const deltaY = touchY - touchJoystick.startY;
+    const distance = Math.min(Math.sqrt(deltaX * deltaX + deltaY * deltaY), 50);
+    const angle = Math.atan2(deltaY, deltaX);
+    joystickPosition.x = Math.cos(angle) * (distance / 50);
+    joystickPosition.y = Math.sin(angle) * (distance / 50);
+    const knob = document.getElementById("joystick-knob");
+    if (knob) {
+      knob.style.left = 35 + joystickPosition.x * 35 + "px";
+      knob.style.top = 35 + joystickPosition.y * 35 + "px";
+    }
+    keyState.forward = joystickPosition.y < -0.3;
+    keyState.backward = joystickPosition.y > 0.3;
+    keyState.left = joystickPosition.x < -0.3;
+    keyState.right = joystickPosition.x > 0.3;
   }
   function updatePlayer(deltaTime) {
     if (!player) return;
@@ -24374,12 +24480,15 @@ void main() {
     }
     camera.rotation.x = -0.3;
     camera.rotation.z = 0;
-    if (moved) {
-      console.log("Camera moved to:", camera.position);
-    }
   }
   function enterBuilderMode(templateSize = "medium") {
+    console.log("Entering builder mode with template:", templateSize);
     builderMode = true;
+    gameStarted = false;
+    courseTemplate = templateSize;
+    if (player) {
+      player.visible = false;
+    }
     buildControls = {
       forward: false,
       backward: false,
@@ -24393,10 +24502,12 @@ void main() {
     setupBuilderUI();
     setupBuilderEventListeners();
     createBuilderDebugUI();
+    createBuilderToolbar();
     currentBuilderTool = "build";
     selectedBlockType = "platform";
     createPlacementPreview();
-    console.log("Entered builder mode with template:", templateSize);
+    saveBuilderState();
+    console.log("Builder mode entered successfully");
   }
   function setupBuilderEventListeners() {
     document.addEventListener("keydown", handleKeyDown);
@@ -24404,6 +24515,13 @@ void main() {
     const container = document.getElementById("game-container");
     if (!container) return;
     camera.rotation.order = "YXZ";
+    container.addEventListener("click", (event) => {
+      if (builderMode && currentBuilderTool === "build" && !isMouseDown) {
+        placeBlock();
+      } else if (builderMode && currentBuilderTool === "remove" && !isMouseDown) {
+        removeBlock();
+      }
+    });
     container.addEventListener("mousedown", (event) => {
       if (event.button === 2) {
         isMouseDown = true;
@@ -24433,6 +24551,58 @@ void main() {
     container.addEventListener("contextmenu", (event) => {
       event.preventDefault();
     });
+  }
+  function createBuilderToolbar() {
+    const container = document.getElementById("game-container");
+    if (!container) return;
+    const existingToolbar = document.getElementById("builder-toolbar");
+    if (existingToolbar) {
+      existingToolbar.remove();
+    }
+    const toolbar = document.createElement("div");
+    toolbar.id = "builder-toolbar";
+    toolbar.style.position = "absolute";
+    toolbar.style.bottom = "20px";
+    toolbar.style.left = "50%";
+    toolbar.style.transform = "translateX(-50%)";
+    toolbar.style.display = "flex";
+    toolbar.style.gap = "10px";
+    toolbar.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
+    toolbar.style.padding = "10px";
+    toolbar.style.borderRadius = "10px";
+    toolbar.style.zIndex = "1000";
+    const tools = [
+      { id: "build", icon: "\u{1F9F1}", label: "Build" },
+      { id: "remove", icon: "\u{1F5D1}\uFE0F", label: "Remove" },
+      { id: "camera", icon: "\u{1F3A5}", label: "Camera" }
+    ];
+    tools.forEach((tool) => {
+      const button = document.createElement("button");
+      button.id = `tool-${tool.id}`;
+      button.innerHTML = `<div style="font-size: 24px">${tool.icon}</div><div>${tool.label}</div>`;
+      button.style.display = "flex";
+      button.style.flexDirection = "column";
+      button.style.alignItems = "center";
+      button.style.justifyContent = "center";
+      button.style.backgroundColor = currentBuilderTool === tool.id ? "#4CAF50" : "#333";
+      button.style.color = "white";
+      button.style.border = "none";
+      button.style.borderRadius = "8px";
+      button.style.padding = "10px 15px";
+      button.style.cursor = "pointer";
+      button.style.width = "80px";
+      button.style.height = "80px";
+      button.addEventListener("click", () => {
+        currentBuilderTool = tool.id;
+        updateToolbarSelection();
+        if (placementPreview) {
+          placementPreview.visible = tool.id === "build";
+        }
+        saveBuilderState();
+      });
+      toolbar.appendChild(button);
+    });
+    container.appendChild(toolbar);
   }
   function updateToolbarSelection() {
     const tools = ["build", "remove", "camera"];
@@ -24521,6 +24691,67 @@ void main() {
       placementPreview.position.z = Math.round(placementPreview.position.z);
     }
   }
+  function placeBlock() {
+    if (!placementPreview) return;
+    let geometry, material;
+    switch (selectedBlockType) {
+      case "start":
+        geometry = new BoxGeometry(5, 1, 5);
+        material = new MeshStandardMaterial({
+          color: 65280,
+          roughness: 0.7
+        });
+        break;
+      case "finish":
+        geometry = new BoxGeometry(5, 1, 5);
+        material = new MeshStandardMaterial({
+          color: 255,
+          roughness: 0.7
+        });
+        break;
+      case "platform":
+      default:
+        geometry = new BoxGeometry(3, 1, 3);
+        material = new MeshStandardMaterial({
+          color: 13421772,
+          roughness: 0.7
+        });
+    }
+    const block = new Mesh(geometry, material);
+    block.position.copy(placementPreview.position);
+    block.userData = { type: selectedBlockType };
+    block.castShadow = true;
+    block.receiveShadow = true;
+    scene.add(block);
+    buildingBlocks.push(block);
+    platforms.push(block);
+    console.log(`Placed ${selectedBlockType} block at position: `, block.position);
+  }
+  function removeBlock() {
+    if (!placementPreview) return;
+    let closestIndex = -1;
+    let minDistance = Infinity;
+    for (let i = 0; i < buildingBlocks.length; i++) {
+      const block = buildingBlocks[i];
+      if (placementPreview) {
+        const distance = block.position.distanceTo(placementPreview.position);
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestIndex = i;
+        }
+      }
+    }
+    if (closestIndex !== -1 && minDistance < 5) {
+      const blockToRemove = buildingBlocks[closestIndex];
+      scene.remove(blockToRemove);
+      buildingBlocks.splice(closestIndex, 1);
+      const platformIndex = platforms.indexOf(blockToRemove);
+      if (platformIndex !== -1) {
+        platforms.splice(platformIndex, 1);
+      }
+      console.log(`Removed block at position: ${blockToRemove.position.x}, ${blockToRemove.position.y}, ${blockToRemove.position.z}`);
+    }
+  }
   function setupBuilderUI() {
     const container = document.getElementById("game-container");
     if (!container) return;
@@ -24602,9 +24833,9 @@ void main() {
     saveButton.addEventListener("click", saveCourse);
     builderUI.appendChild(saveButton);
     const exitButton = document.createElement("button");
-    exitButton.textContent = "Exit Without Saving";
+    exitButton.textContent = "Enter Player Mode (B)";
     exitButton.style.padding = "8px";
-    exitButton.style.backgroundColor = "#f44336";
+    exitButton.style.backgroundColor = "#4CAF50";
     exitButton.style.color = "white";
     exitButton.style.border = "none";
     exitButton.style.borderRadius = "4px";
@@ -24820,7 +25051,9 @@ void main() {
     exitBuilderMode();
   }
   function exitBuilderMode() {
+    console.log("Exiting builder mode");
     builderMode = false;
+    gameStarted = true;
     const builderUI = document.getElementById("builder-ui");
     if (builderUI) {
       builderUI.remove();
@@ -24833,22 +25066,34 @@ void main() {
       scene.remove(placementPreview);
       placementPreview = null;
     }
+    resetAllControls();
+    playerState = {
+      position: new Vector3(0, 1, 0),
+      velocity: new Vector3(0, 0, 0),
+      rotation: new Euler(0, 0, 0),
+      onGround: true,
+      jumping: false,
+      speed: 5,
+      jumpPower: 10,
+      gravity: 20,
+      currentAnimation: "idle"
+    };
     const gameContainer = document.getElementById("game-container");
     if (gameContainer) {
-      gameContainer.removeEventListener("mousedown", handleBuilderMouseDown);
       gameContainer.style.cursor = "default";
     }
-    document.removeEventListener("mouseup", handleBuilderMouseUp);
-    document.removeEventListener("mousemove", handleMouseMove);
-    if (player) player.visible = true;
+    const debugUI = document.getElementById("builder-debug");
+    if (debugUI) {
+      debugUI.remove();
+    }
+    if (player) {
+      player.visible = true;
+      player.position.set(0, 1, 0);
+    }
     camera.position.set(0, 5, 10);
-    camera.rotation.set(0, 0, 0);
-    localStorage.removeItem("builderState");
-    localStorage.removeItem("builderTemplate");
-    window.parent.postMessage({
-      type: "menuRequest",
-      data: { menu: "main" }
-    }, "*");
+    camera.rotation.set(-0.3, 0, 0);
+    localStorage.setItem("lastMode", "player");
+    console.log("Builder mode exited successfully");
   }
   function saveBuilderState() {
     if (!builderMode) return;
@@ -24905,6 +25150,65 @@ void main() {
       <div style="margin-top:5px;font-size:11px;">Pos: ${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}</div>
     `;
     }, 100);
+  }
+  function showOverlay() {
+    if (isOverlayActive) return;
+    const container = document.getElementById("game-container");
+    if (!container) return;
+    resetAllControls();
+    const overlay = document.createElement("div");
+    overlay.id = "game-overlay";
+    overlay.style.position = "absolute";
+    overlay.style.top = "0";
+    overlay.style.left = "0";
+    overlay.style.width = "100%";
+    overlay.style.height = "100%";
+    overlay.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
+    overlay.style.display = "flex";
+    overlay.style.justifyContent = "center";
+    overlay.style.alignItems = "center";
+    overlay.style.zIndex = "9999";
+    overlay.style.cursor = "pointer";
+    const message = document.createElement("div");
+    message.textContent = "Click to play";
+    message.style.color = "white";
+    message.style.fontSize = "24px";
+    message.style.fontFamily = "Arial, sans-serif";
+    message.style.padding = "20px";
+    message.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+    message.style.borderRadius = "10px";
+    message.style.border = "2px solid white";
+    overlay.appendChild(message);
+    container.appendChild(overlay);
+    isOverlayActive = true;
+    overlay.addEventListener("click", hideOverlay);
+  }
+  function hideOverlay() {
+    const overlay = document.getElementById("game-overlay");
+    if (overlay) {
+      overlay.remove();
+      isOverlayActive = false;
+    }
+  }
+  function resetAllControls() {
+    buildControls = {
+      forward: false,
+      backward: false,
+      left: false,
+      right: false,
+      up: false,
+      down: false,
+      rotateLeft: false,
+      rotateRight: false
+    };
+    keyState = {
+      forward: false,
+      backward: false,
+      left: false,
+      right: false,
+      jump: false
+    };
+    isMouseDown = false;
   }
   console.log("app.js loaded");
   init();

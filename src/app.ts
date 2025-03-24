@@ -71,6 +71,9 @@ let isMouseDown = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
 
+// Add overlay state
+let isOverlayActive = false;
+
 // Initialize the game
 function init() {
   console.log("Initializing Three.js scene...");
@@ -105,6 +108,13 @@ function init() {
   if (container) {
     container.appendChild(renderer.domElement);
     console.log("Renderer appended to #game-container");
+    
+    // Add focus/blur handlers
+    window.addEventListener("blur", showOverlay);
+    container.addEventListener("mouseleave", showOverlay);
+    
+    // Show initial overlay
+    showOverlay();
   } else {
     console.error("No #game-container found!");
     return;
@@ -124,17 +134,8 @@ function init() {
   // Load player character
   loadPlayerCharacter();
   
-  // Setup event listeners
-  console.log("Setting up global event listeners");
-  document.addEventListener("keydown", (event) => {
-    console.log("Raw keydown event:", event.key);
-    handleKeyDown(event);
-  });
-  document.addEventListener("keyup", (event) => {
-    console.log("Raw keyup event:", event.key);
-    handleKeyUp(event);
-  });
-  window.addEventListener("resize", handleResize);
+  // Set up event listeners
+  setupEventListeners();
   
   // Create mobile controls if on mobile
   if (isMobile) {
@@ -148,11 +149,7 @@ function init() {
   window.parent.postMessage({ type: "webViewReady" }, "*");
   console.log("Sent webViewReady message");
   
-  // Clear any existing builder state
-  localStorage.removeItem('builderState');
-  localStorage.removeItem('builderTemplate');
-  
-  // Start in builder mode directly to fix issue
+  // Start in builder mode directly
   console.log("Starting in builder mode");
   enterBuilderMode("medium");
 }
@@ -315,12 +312,26 @@ function loadPlayerCharacter() {
 }
 
 function setupEventListeners() {
+  console.log("Setting up global event listeners");
+  
   // Keyboard controls
-  window.addEventListener("keydown", handleKeyDown);
-  window.addEventListener("keyup", handleKeyUp);
+  document.addEventListener("keydown", handleKeyDown);
+  document.addEventListener("keyup", handleKeyUp);
   
   // Window resize
   window.addEventListener("resize", handleResize);
+  
+  // Focus/blur handlers
+  window.addEventListener("blur", () => {
+    showOverlay();
+    resetAllControls();
+  });
+  
+  // Handle mouse leaving the window
+  document.addEventListener("mouseleave", () => {
+    showOverlay();
+    resetAllControls();
+  });
   
   // Touch controls for mobile
   if (isMobile) {
@@ -366,6 +377,25 @@ function setupEventListeners() {
 }
 
 function handleKeyDown(event: KeyboardEvent) {
+  console.log(`Key pressed: ${event.key}, Builder mode: ${builderMode}, Game started: ${gameStarted}, Overlay active: ${isOverlayActive}`);
+  
+  // Ignore key events when overlay is active
+  if (isOverlayActive) return;
+  
+  // Handle 'B' key for mode switching
+  if (event.key.toLowerCase() === 'b') {
+    console.log("B key pressed - attempting to toggle modes");
+    if (builderMode) {
+      console.log("Exiting builder mode");
+      exitBuilderMode();
+    } else {
+      console.log("Entering builder mode");
+      const lastTemplate = localStorage.getItem('builderTemplate') || "medium";
+      enterBuilderMode(lastTemplate);
+    }
+    return;
+  }
+
   if (!builderMode) {
     // Regular game controls
     switch (event.key.toLowerCase()) {
@@ -443,6 +473,9 @@ function handleKeyDown(event: KeyboardEvent) {
 }
 
 function handleKeyUp(event: KeyboardEvent) {
+  // Ignore key events when overlay is active
+  if (isOverlayActive) return;
+  
   if (!builderMode) {
     // Regular game controls
     switch (event.key.toLowerCase()) {
@@ -917,16 +950,20 @@ function updateBuilderCamera(deltaTime: number) {
   // Ensure camera maintains proper orientation
   camera.rotation.x = -0.3; // Keep slight downward angle
   camera.rotation.z = 0;    // Keep level
-  
-  if (moved) {
-    console.log("Camera moved to:", camera.position);
-  }
 }
 
 // Update the enter builder mode function
 function enterBuilderMode(templateSize: string = "medium") {
+  console.log("Entering builder mode with template:", templateSize);
   builderMode = true;
-  
+  gameStarted = false;
+  courseTemplate = templateSize;
+
+  // Hide player
+  if (player) {
+    player.visible = false;
+  }
+
   // Reset all controls
   buildControls = {
     forward: false,
@@ -943,13 +980,17 @@ function enterBuilderMode(templateSize: string = "medium") {
   setupBuilderUI();
   setupBuilderEventListeners();
   createBuilderDebugUI();
+  createBuilderToolbar();
   
   // Initialize builder state
   currentBuilderTool = "build";
   selectedBlockType = "platform";
   createPlacementPreview();
   
-  console.log("Entered builder mode with template:", templateSize);
+  // Save initial builder state
+  saveBuilderState();
+  
+  console.log("Builder mode entered successfully");
 }
 
 // Function to clear existing blocks
@@ -982,6 +1023,18 @@ function setupBuilderEventListeners() {
   
   // Set camera's euler order to YXZ to prevent gimbal lock and maintain proper rotation
   camera.rotation.order = "YXZ";
+  
+  // Left click to place blocks
+  container.addEventListener('click', (event) => {
+    // Only place blocks if we're in build mode with the build tool selected
+    if (builderMode && currentBuilderTool === "build" && !isMouseDown) {
+      placeBlock();
+    }
+    // If we're in remove mode, remove blocks on left click
+    else if (builderMode && currentBuilderTool === "remove" && !isMouseDown) {
+      removeBlock();
+    }
+  });
   
   // Mouse controls for camera rotation
   container.addEventListener('mousedown', (event) => {
@@ -1535,9 +1588,9 @@ function setupBuilderUI() {
   
   // Exit builder button
   const exitButton = document.createElement("button");
-  exitButton.textContent = "Exit Without Saving";
+  exitButton.textContent = "Enter Player Mode (B)";
   exitButton.style.padding = "8px";
-  exitButton.style.backgroundColor = "#f44336";
+  exitButton.style.backgroundColor = "#4CAF50";
   exitButton.style.color = "white";
   exitButton.style.border = "none";
   exitButton.style.borderRadius = "4px";
@@ -1806,7 +1859,9 @@ function saveCourse() {
 
 // Exit builder mode
 function exitBuilderMode() {
+  console.log("Exiting builder mode");
   builderMode = false;
+  gameStarted = true;
   
   // Remove builder UI elements
   const builderUI = document.getElementById("builder-ui");
@@ -1825,31 +1880,47 @@ function exitBuilderMode() {
     placementPreview = null;
   }
   
-  // Remove event listeners
+  // Reset all controls
+  resetAllControls();
+  
+  // Reset player state
+  playerState = {
+    position: new THREE.Vector3(0, 1, 0),
+    velocity: new THREE.Vector3(0, 0, 0),
+    rotation: new THREE.Euler(0, 0, 0),
+    onGround: true,
+    jumping: false,
+    speed: 5,
+    jumpPower: 10,
+    gravity: 20,
+    currentAnimation: "idle"
+  };
+  
+  // Reset cursor style
   const gameContainer = document.getElementById("game-container");
   if (gameContainer) {
-    gameContainer.removeEventListener("mousedown", handleBuilderMouseDown);
     gameContainer.style.cursor = "default";
   }
-  document.removeEventListener("mouseup", handleBuilderMouseUp);
-  document.removeEventListener("mousemove", handleMouseMove);
   
-  // Show player if it exists
-  if (player) player.visible = true;
+  // Remove debug UI
+  const debugUI = document.getElementById("builder-debug");
+  if (debugUI) {
+    debugUI.remove();
+  }
   
-  // Reset camera position
+  // Show and position player
+  if (player) {
+    player.visible = true;
+    player.position.set(0, 1, 0);
+  }
+  
+  // Reset camera
   camera.position.set(0, 5, 10);
-  camera.rotation.set(0, 0, 0);
+  camera.rotation.set(-0.3, 0, 0);
   
-  // Clear saved builder state
-  localStorage.removeItem('builderState');
-  localStorage.removeItem('builderTemplate');
-  
-  // Send message to parent to return to main menu
-  window.parent.postMessage({
-    type: "menuRequest",
-    data: { menu: "main" }
-  }, "*");
+  // Save state before exiting
+  localStorage.setItem('lastMode', 'player');
+  console.log("Builder mode exited successfully");
 }
 
 // Function to save builder state to localStorage
@@ -1970,6 +2041,84 @@ function createBuilderDebugUI() {
       <div style="margin-top:5px;font-size:11px;">Pos: ${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}</div>
     `;
   }, 100);
+}
+
+// Create and show the overlay
+function showOverlay() {
+  if (isOverlayActive) return;
+  
+  const container = document.getElementById("game-container");
+  if (!container) return;
+  
+  // Reset all controls when overlay is shown
+  resetAllControls();
+  
+  const overlay = document.createElement("div");
+  overlay.id = "game-overlay";
+  overlay.style.position = "absolute";
+  overlay.style.top = "0";
+  overlay.style.left = "0";
+  overlay.style.width = "100%";
+  overlay.style.height = "100%";
+  overlay.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
+  overlay.style.display = "flex";
+  overlay.style.justifyContent = "center";
+  overlay.style.alignItems = "center";
+  overlay.style.zIndex = "9999";
+  overlay.style.cursor = "pointer";
+  
+  const message = document.createElement("div");
+  message.textContent = "Click to play";
+  message.style.color = "white";
+  message.style.fontSize = "24px";
+  message.style.fontFamily = "Arial, sans-serif";
+  message.style.padding = "20px";
+  message.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+  message.style.borderRadius = "10px";
+  message.style.border = "2px solid white";
+  
+  overlay.appendChild(message);
+  container.appendChild(overlay);
+  isOverlayActive = true;
+  
+  // Add click handler to remove overlay
+  overlay.addEventListener("click", hideOverlay);
+}
+
+// Hide the overlay and resume game
+function hideOverlay() {
+  const overlay = document.getElementById("game-overlay");
+  if (overlay) {
+    overlay.remove();
+    isOverlayActive = false;
+  }
+}
+
+// Add this function to reset all controls
+function resetAllControls() {
+  // Reset builder controls
+  buildControls = {
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+    up: false,
+    down: false,
+    rotateLeft: false,
+    rotateRight: false
+  };
+  
+  // Reset game controls
+  keyState = {
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+    jump: false
+  };
+  
+  // Reset mouse state
+  isMouseDown = false;
 }
 
 // Initialize the game
