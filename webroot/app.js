@@ -23805,6 +23805,7 @@ void main() {
     rotateLeft: false,
     rotateRight: false
   };
+  var buildCameraSpeed = 0.3;
   var placementPreview = null;
   var playerState = {
     position: new Vector3(0, 1, 0),
@@ -24029,10 +24030,12 @@ void main() {
       if (builderMode) {
         console.log("Exiting builder mode");
         exitBuilderMode();
+        event.preventDefault();
       } else {
         console.log("Entering builder mode");
         const lastTemplate = localStorage.getItem("builderTemplate") || "medium";
         enterBuilderMode(lastTemplate);
+        event.preventDefault();
       }
       return;
     }
@@ -24444,7 +24447,7 @@ void main() {
     right.applyQuaternion(camera.quaternion);
     right.y = 0;
     right.normalize();
-    const moveSpeed = 0.75;
+    const moveSpeed = buildCameraSpeed;
     let moved = false;
     if (buildControls.forward) {
       camera.position.addScaledVector(direction, moveSpeed);
@@ -25093,7 +25096,7 @@ void main() {
     camera.position.set(0, 5, 10);
     camera.rotation.set(-0.3, 0, 0);
     localStorage.setItem("lastMode", "player");
-    console.log("Builder mode exited successfully");
+    console.log("Builder mode exited successfully, now in player mode");
   }
   function saveBuilderState() {
     if (!builderMode) return;

@@ -26,7 +26,6 @@ let buildingBlocks: THREE.Mesh[] = [];
 let selectedBlockType = "platform"; // platform, start, finish
 let courseTemplate = "medium"; // small, medium, large
 let currentBuilderTool = "build"; // build, remove, camera
-let rightClickRotating = false;
 let buildControls = {
   forward: false,
   backward: false,
@@ -37,8 +36,7 @@ let buildControls = {
   rotateLeft: false,
   rotateRight: false
 };
-let buildCameraSpeed = 10;
-let buildRotationSpeed = 2;
+let buildCameraSpeed = 0.3; // Movement speed for builder camera
 let placementPreview: THREE.Mesh | null = null;
 
 // Player state
@@ -152,6 +150,10 @@ function init() {
   // Start in builder mode directly
   console.log("Starting in builder mode");
   enterBuilderMode("medium");
+  
+  // Load builder state from localStorage if it exists
+  // Uncomment if you want to restore previous state instead of starting fresh
+  // loadBuilderState();
 }
 
 function setupLighting() {
@@ -385,13 +387,17 @@ function handleKeyDown(event: KeyboardEvent) {
   // Handle 'B' key for mode switching
   if (event.key.toLowerCase() === 'b') {
     console.log("B key pressed - attempting to toggle modes");
+    
+    // Toggle between builder and player mode
     if (builderMode) {
       console.log("Exiting builder mode");
       exitBuilderMode();
+      event.preventDefault(); // Prevent default browser behavior
     } else {
       console.log("Entering builder mode");
       const lastTemplate = localStorage.getItem('builderTemplate') || "medium";
       enterBuilderMode(lastTemplate);
+      event.preventDefault(); // Prevent default browser behavior
     }
     return;
   }
@@ -908,7 +914,8 @@ function updateBuilderCamera(deltaTime: number) {
   right.y = 0; // Keep movement horizontal
   right.normalize();
   
-  const moveSpeed = 0.75; // Keep increased speed
+  // Use the configured builder camera speed
+  const moveSpeed = buildCameraSpeed;
   let moved = false;
   
   // Handle keyboard movement
@@ -1920,7 +1927,7 @@ function exitBuilderMode() {
   
   // Save state before exiting
   localStorage.setItem('lastMode', 'player');
-  console.log("Builder mode exited successfully");
+  console.log("Builder mode exited successfully, now in player mode");
 }
 
 // Function to save builder state to localStorage
