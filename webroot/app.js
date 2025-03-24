@@ -11893,6 +11893,187 @@ var THREE = (() => {
       return new this.constructor().copy(this);
     }
   };
+  var LineBasicMaterial = class extends Material {
+    constructor(parameters) {
+      super();
+      this.isLineBasicMaterial = true;
+      this.type = "LineBasicMaterial";
+      this.color = new Color(16777215);
+      this.map = null;
+      this.linewidth = 1;
+      this.linecap = "round";
+      this.linejoin = "round";
+      this.fog = true;
+      this.setValues(parameters);
+    }
+    copy(source) {
+      super.copy(source);
+      this.color.copy(source.color);
+      this.map = source.map;
+      this.linewidth = source.linewidth;
+      this.linecap = source.linecap;
+      this.linejoin = source.linejoin;
+      this.fog = source.fog;
+      return this;
+    }
+  };
+  var _vStart = /* @__PURE__ */ new Vector3();
+  var _vEnd = /* @__PURE__ */ new Vector3();
+  var _inverseMatrix$1 = /* @__PURE__ */ new Matrix4();
+  var _ray$1 = /* @__PURE__ */ new Ray();
+  var _sphere$1 = /* @__PURE__ */ new Sphere();
+  var _intersectPointOnRay = /* @__PURE__ */ new Vector3();
+  var _intersectPointOnSegment = /* @__PURE__ */ new Vector3();
+  var Line = class extends Object3D {
+    /**
+     * Constructs a new line.
+     *
+     * @param {BufferGeometry} [geometry] - The line geometry.
+     * @param {Material|Array<Material>} [material] - The line material.
+     */
+    constructor(geometry = new BufferGeometry(), material = new LineBasicMaterial()) {
+      super();
+      this.isLine = true;
+      this.type = "Line";
+      this.geometry = geometry;
+      this.material = material;
+      this.morphTargetDictionary = void 0;
+      this.morphTargetInfluences = void 0;
+      this.updateMorphTargets();
+    }
+    copy(source, recursive) {
+      super.copy(source, recursive);
+      this.material = Array.isArray(source.material) ? source.material.slice() : source.material;
+      this.geometry = source.geometry;
+      return this;
+    }
+    /**
+     * Computes an array of distance values which are necessary for rendering dashed lines.
+     * For each vertex in the geometry, the method calculates the cumulative length from the
+     * current point to the very beginning of the line.
+     *
+     * @return {Line} A reference to this line.
+     */
+    computeLineDistances() {
+      const geometry = this.geometry;
+      if (geometry.index === null) {
+        const positionAttribute = geometry.attributes.position;
+        const lineDistances = [0];
+        for (let i = 1, l = positionAttribute.count; i < l; i++) {
+          _vStart.fromBufferAttribute(positionAttribute, i - 1);
+          _vEnd.fromBufferAttribute(positionAttribute, i);
+          lineDistances[i] = lineDistances[i - 1];
+          lineDistances[i] += _vStart.distanceTo(_vEnd);
+        }
+        geometry.setAttribute("lineDistance", new Float32BufferAttribute(lineDistances, 1));
+      } else {
+        console.warn("THREE.Line.computeLineDistances(): Computation only possible with non-indexed BufferGeometry.");
+      }
+      return this;
+    }
+    /**
+     * Computes intersection points between a casted ray and this line.
+     *
+     * @param {Raycaster} raycaster - The raycaster.
+     * @param {Array<Object>} intersects - The target array that holds the intersection points.
+     */
+    raycast(raycaster, intersects) {
+      const geometry = this.geometry;
+      const matrixWorld = this.matrixWorld;
+      const threshold = raycaster.params.Line.threshold;
+      const drawRange = geometry.drawRange;
+      if (geometry.boundingSphere === null) geometry.computeBoundingSphere();
+      _sphere$1.copy(geometry.boundingSphere);
+      _sphere$1.applyMatrix4(matrixWorld);
+      _sphere$1.radius += threshold;
+      if (raycaster.ray.intersectsSphere(_sphere$1) === false) return;
+      _inverseMatrix$1.copy(matrixWorld).invert();
+      _ray$1.copy(raycaster.ray).applyMatrix4(_inverseMatrix$1);
+      const localThreshold = threshold / ((this.scale.x + this.scale.y + this.scale.z) / 3);
+      const localThresholdSq = localThreshold * localThreshold;
+      const step = this.isLineSegments ? 2 : 1;
+      const index = geometry.index;
+      const attributes = geometry.attributes;
+      const positionAttribute = attributes.position;
+      if (index !== null) {
+        const start = Math.max(0, drawRange.start);
+        const end = Math.min(index.count, drawRange.start + drawRange.count);
+        for (let i = start, l = end - 1; i < l; i += step) {
+          const a = index.getX(i);
+          const b = index.getX(i + 1);
+          const intersect2 = checkIntersection(this, raycaster, _ray$1, localThresholdSq, a, b, i);
+          if (intersect2) {
+            intersects.push(intersect2);
+          }
+        }
+        if (this.isLineLoop) {
+          const a = index.getX(end - 1);
+          const b = index.getX(start);
+          const intersect2 = checkIntersection(this, raycaster, _ray$1, localThresholdSq, a, b, end - 1);
+          if (intersect2) {
+            intersects.push(intersect2);
+          }
+        }
+      } else {
+        const start = Math.max(0, drawRange.start);
+        const end = Math.min(positionAttribute.count, drawRange.start + drawRange.count);
+        for (let i = start, l = end - 1; i < l; i += step) {
+          const intersect2 = checkIntersection(this, raycaster, _ray$1, localThresholdSq, i, i + 1, i);
+          if (intersect2) {
+            intersects.push(intersect2);
+          }
+        }
+        if (this.isLineLoop) {
+          const intersect2 = checkIntersection(this, raycaster, _ray$1, localThresholdSq, end - 1, start, end - 1);
+          if (intersect2) {
+            intersects.push(intersect2);
+          }
+        }
+      }
+    }
+    /**
+     * Sets the values of {@link Line#morphTargetDictionary} and {@link Line#morphTargetInfluences}
+     * to make sure existing morph targets can influence this 3D object.
+     */
+    updateMorphTargets() {
+      const geometry = this.geometry;
+      const morphAttributes = geometry.morphAttributes;
+      const keys = Object.keys(morphAttributes);
+      if (keys.length > 0) {
+        const morphAttribute = morphAttributes[keys[0]];
+        if (morphAttribute !== void 0) {
+          this.morphTargetInfluences = [];
+          this.morphTargetDictionary = {};
+          for (let m = 0, ml = morphAttribute.length; m < ml; m++) {
+            const name = morphAttribute[m].name || String(m);
+            this.morphTargetInfluences.push(0);
+            this.morphTargetDictionary[name] = m;
+          }
+        }
+      }
+    }
+  };
+  function checkIntersection(object, raycaster, ray, thresholdSq, a, b, i) {
+    const positionAttribute = object.geometry.attributes.position;
+    _vStart.fromBufferAttribute(positionAttribute, a);
+    _vEnd.fromBufferAttribute(positionAttribute, b);
+    const distSq = ray.distanceSqToSegment(_vStart, _vEnd, _intersectPointOnRay, _intersectPointOnSegment);
+    if (distSq > thresholdSq) return;
+    _intersectPointOnRay.applyMatrix4(object.matrixWorld);
+    const distance = raycaster.ray.origin.distanceTo(_intersectPointOnRay);
+    if (distance < raycaster.near || distance > raycaster.far) return;
+    return {
+      distance,
+      // What do we want? intersection point on the ray or on the segment??
+      // point: raycaster.ray.at( distance ),
+      point: _intersectPointOnSegment.clone().applyMatrix4(object.matrixWorld),
+      index: i,
+      face: null,
+      faceIndex: null,
+      barycoord: null,
+      object
+    };
+  }
   var DepthTexture = class extends Texture {
     constructor(width, height, type, mapping, wrapS, wrapT, magFilter, minFilter, anisotropy, format = DepthFormat) {
       if (format !== DepthFormat && format !== DepthStencilFormat) {
@@ -23773,115 +23954,191 @@ void main() {
     }
   };
 
-  // src/app.ts
-  var scene;
-  var camera;
-  var renderer;
-  var player = null;
-  var mixer = null;
-  var actions = {
-    idle: null,
-    running: null,
-    jumping: null
+  // src/utils/config.ts
+  var CAMERA_SETTINGS = {
+    FOV: 75,
+    NEAR: 0.1,
+    FAR: 1e3,
+    DEFAULT_POSITION: new Vector3(0, 5, 10),
+    DEFAULT_ROTATION: new Euler(-0.3, 0, 0),
+    FOLLOW_HEIGHT: 5,
+    FOLLOW_DISTANCE: 7,
+    ROTATION_SPEED: 2
   };
-  var clock = new Clock();
-  var platforms = [];
-  var gameStarted = false;
-  var isMobile = false;
-  var joystickPosition = { x: 0, y: 0 };
-  var touchJoystick = { active: false, startX: 0, startY: 0 };
-  var builderMode = false;
-  var buildingBlocks = [];
-  var selectedBlockType = "platform";
-  var courseTemplate = "medium";
-  var currentBuilderTool = "build";
-  var buildControls = {
-    forward: false,
-    backward: false,
-    left: false,
-    right: false,
-    up: false,
-    down: false,
-    rotateLeft: false,
-    rotateRight: false
+  var PLAYER_SETTINGS = {
+    DEFAULT_POSITION: new Vector3(0, 1, 0),
+    MOVEMENT_SPEED: 5,
+    JUMP_POWER: 15,
+    GRAVITY: 20,
+    FALL_GRAVITY: 35,
+    GROUND_CHECK_DISTANCE: 1.1
   };
-  var buildCameraSpeed = 0.3;
-  var placementPreview = null;
-  var playerState = {
-    position: new Vector3(0, 1, 0),
-    velocity: new Vector3(0, 0, 0),
-    rotation: new Euler(0, 0, 0),
-    onGround: true,
-    jumping: false,
-    speed: 5,
-    jumpPower: 15,
-    gravity: 20,
-    fallGravity: 35,
-    // Higher gravity when falling
-    currentAnimation: "idle"
+  var BUILDER_SETTINGS = {
+    CAMERA_SPEED: 0.5,
+    ROTATION_SPEED: 0.05,
+    GRID_CELL_SIZE: 10,
+    PLACEMENT_PREVIEW_DISTANCE: 20,
+    PLACEMENT_GRID_SNAP: true,
+    REMOVAL_RANGE: 5
   };
-  var keyState = {
-    forward: false,
-    backward: false,
-    left: false,
-    right: false,
-    jump: false,
-    rotateLeft: false,
-    rotateRight: false
+  var ENVIRONMENT_SETTINGS = {
+    GROUND_SIZE: 100,
+    GROUND_COLOR: 3355443,
+    SKY_COLOR: 8900331,
+    FOG_NEAR: 30,
+    FOG_FAR: 100
   };
-  var isMouseDown = false;
-  var lastMouseX = 0;
-  var lastMouseY = 0;
-  var isOverlayActive = false;
-  var cameraRotationAngle = 0;
-  var cameraRotationSpeed = 2;
-  function init() {
-    console.log("Initializing Three.js scene...");
-    isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    scene = new Scene();
-    scene.background = new Color(8900331);
-    scene.fog = new Fog(8900331, 30, 100);
-    camera = new PerspectiveCamera(
-      75,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      1e3
-    );
-    camera.position.set(0, 5, 10);
-    renderer = new WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = PCFSoftShadowMap;
-    const container = document.getElementById("game-container");
-    if (container) {
-      container.appendChild(renderer.domElement);
-      console.log("Renderer appended to #game-container");
-      window.addEventListener("blur", showOverlay);
-      container.addEventListener("mouseleave", showOverlay);
-      showOverlay();
-    } else {
-      console.error("No #game-container found!");
-      return;
+  var BLOCK_TYPES = {
+    PLATFORM: {
+      name: "platform",
+      color: 13421772,
+      size: { width: 3, height: 1, depth: 3 },
+      type: "platform"
+    },
+    START: {
+      name: "start",
+      color: 65280,
+      size: { width: 5, height: 1, depth: 5 },
+      type: "start"
+    },
+    FINISH: {
+      name: "finish",
+      color: 255,
+      size: { width: 5, height: 1, depth: 5 },
+      type: "finish"
     }
-    setupLighting();
-    createGround();
-    if (!window.location.search.includes("builder=true")) {
-      createCityEnvironment();
-    }
-    loadPlayerCharacter();
-    setupEventListeners();
-    if (isMobile) {
-      createMobileControls();
-    }
-    animate();
-    window.parent.postMessage({ type: "webViewReady" }, "*");
-    console.log("Sent webViewReady message");
-    console.log("Starting in builder mode");
-    enterBuilderMode("medium");
+  };
+  var TEMPLATE_SIZES = {
+    SMALL: 50,
+    MEDIUM: 100,
+    LARGE: 150
+  };
+  var STORAGE_KEYS = {
+    BUILDER_STATE: "builderState",
+    BUILDER_TEMPLATE: "builderTemplate",
+    LAST_MODE: "lastMode"
+  };
+
+  // src/utils/helpers.ts
+  function isMobileDevice() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   }
-  function setupLighting() {
+  function sendMessageToParent(type, data = {}) {
+    window.parent.postMessage({ type, data }, "*");
+  }
+  function saveBuilderState(isBuilderMode, template, camera2, selectedTool, selectedBlockType2, blocks) {
+    console.log("STORAGE DEBUG - Saving builder state with", blocks?.length || 0, "blocks, builder mode:", isBuilderMode);
+    const state = {
+      isBuilderMode,
+      template,
+      cameraPosition: {
+        x: camera2.position.x,
+        y: camera2.position.y,
+        z: camera2.position.z
+      },
+      cameraRotation: {
+        x: camera2.rotation.x,
+        y: camera2.rotation.y,
+        z: camera2.rotation.z
+      },
+      selectedTool,
+      selectedBlockType: selectedBlockType2
+    };
+    if (blocks && blocks.length > 0) {
+      console.log("STORAGE DEBUG - Serializing", blocks.length, "blocks for storage");
+      const positionMap = /* @__PURE__ */ new Map();
+      state.blocks = blocks.filter((block) => {
+        const posKey = `${Math.round(block.position.x)},${Math.round(block.position.y)},${Math.round(block.position.z)}`;
+        if (positionMap.has(posKey)) {
+          console.log("STORAGE DEBUG - Skipping duplicate block at position:", posKey);
+          return false;
+        }
+        positionMap.set(posKey, true);
+        return true;
+      }).map((block) => ({
+        position: {
+          x: block.position.x,
+          y: block.position.y,
+          z: block.position.z
+        },
+        type: block.userData?.type || "platform",
+        size: block.geometry.type.includes("Box") ? block.geometry.parameters : { width: 3, height: 1, depth: 3 }
+      }));
+      console.log("STORAGE DEBUG - After de-duplication, saving", state.blocks.length, "blocks");
+    }
+    try {
+      localStorage.setItem(STORAGE_KEYS.BUILDER_STATE, JSON.stringify(state));
+      localStorage.setItem(STORAGE_KEYS.BUILDER_TEMPLATE, template);
+      localStorage.setItem(STORAGE_KEYS.LAST_MODE, isBuilderMode ? "builder" : "player");
+      console.log("STORAGE DEBUG - Builder state saved successfully");
+    } catch (error) {
+      console.error("Error saving builder state:", error);
+    }
+  }
+  function loadBuilderState() {
+    const stateStr = localStorage.getItem(STORAGE_KEYS.BUILDER_STATE);
+    if (!stateStr) return null;
+    try {
+      const state = JSON.parse(stateStr);
+      if (state.blocks && state.blocks.length > 0) {
+        console.log("STORAGE DEBUG - Loading state with", state.blocks.length, "blocks");
+        const positionMap = /* @__PURE__ */ new Map();
+        const uniqueBlocks = state.blocks.filter((block) => {
+          const posKey = `${Math.round(block.position.x)},${Math.round(block.position.y)},${Math.round(block.position.z)}`;
+          if (positionMap.has(posKey)) {
+            console.log("STORAGE DEBUG - Found duplicate block at position:", posKey);
+            return false;
+          }
+          positionMap.set(posKey, true);
+          return true;
+        });
+        if (uniqueBlocks.length !== state.blocks.length) {
+          console.log(`STORAGE DEBUG - De-duplicated blocks: ${state.blocks.length} -> ${uniqueBlocks.length}`);
+          state.blocks = uniqueBlocks;
+        }
+      }
+      return state;
+    } catch (error) {
+      console.error("Error loading builder state:", error);
+      localStorage.removeItem(STORAGE_KEYS.BUILDER_STATE);
+      localStorage.removeItem(STORAGE_KEYS.BUILDER_TEMPLATE);
+      return null;
+    }
+  }
+  function removeElement(id) {
+    const element = document.getElementById(id);
+    if (element) {
+      element.remove();
+    }
+  }
+  function createElement(tag, attributes = {}, styles = {}, innerHTML = "") {
+    const element = document.createElement(tag);
+    Object.entries(attributes).forEach(([key, value]) => {
+      element.setAttribute(key, value);
+    });
+    Object.entries(styles).forEach(([key, value]) => {
+      element.style[key] = value;
+    });
+    if (innerHTML) {
+      element.innerHTML = innerHTML;
+    }
+    return element;
+  }
+  function resetBuilderLocalStorage() {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.BUILDER_STATE);
+      localStorage.removeItem(STORAGE_KEYS.BUILDER_TEMPLATE);
+      localStorage.removeItem(STORAGE_KEYS.LAST_MODE);
+      console.log("Builder localStorage data reset successfully");
+    } catch (error) {
+      console.error("Error resetting builder localStorage:", error);
+    }
+  }
+
+  // src/systems/environment.ts
+  function setupLighting(scene2) {
     const ambientLight = new AmbientLight(16777215, 0.5);
-    scene.add(ambientLight);
+    scene2.add(ambientLight);
     const directionalLight = new DirectionalLight(16777215, 0.8);
     directionalLight.position.set(100, 100, 50);
     directionalLight.castShadow = true;
@@ -23893,12 +24150,13 @@ void main() {
     directionalLight.shadow.camera.right = 100;
     directionalLight.shadow.camera.top = 100;
     directionalLight.shadow.camera.bottom = -100;
-    scene.add(directionalLight);
+    scene2.add(directionalLight);
   }
-  function createGround() {
-    const groundGeometry = new PlaneGeometry(100, 100);
+  function createGround(scene2) {
+    const size = ENVIRONMENT_SETTINGS.GROUND_SIZE;
+    const groundGeometry = new PlaneGeometry(size, size);
     const groundMaterial = new MeshStandardMaterial({
-      color: 3355443,
+      color: ENVIRONMENT_SETTINGS.GROUND_COLOR,
       roughness: 0.8,
       metalness: 0.2
     });
@@ -23906,9 +24164,11 @@ void main() {
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = 0;
     ground.receiveShadow = true;
-    scene.add(ground);
+    ground.name = "Ground";
+    scene2.add(ground);
+    return ground;
   }
-  function createCityEnvironment() {
+  function createCityEnvironment(scene2) {
     for (let i = 0; i < 20; i++) {
       const width = 5 + Math.random() * 10;
       const height = 10 + Math.random() * 40;
@@ -23928,12 +24188,13 @@ void main() {
       if (building.position.distanceTo(new Vector3(0, 0, 0)) > 10) {
         building.castShadow = true;
         building.receiveShadow = true;
-        scene.add(building);
+        scene2.add(building);
       }
     }
-    createParkourPlatforms();
+    createParkourPlatforms(scene2);
   }
-  function createParkourPlatforms() {
+  function createParkourPlatforms(scene2) {
+    const platforms2 = [];
     const platformPositions = [
       { x: 5, y: 1, z: 5, type: "garbage" },
       { x: 8, y: 2, z: 10, type: "garbage" },
@@ -23971,666 +24232,786 @@ void main() {
       platformMesh.position.set(platform.x, platform.y, platform.z);
       platformMesh.castShadow = true;
       platformMesh.receiveShadow = true;
-      scene.add(platformMesh);
-      platforms.push(platformMesh);
+      scene2.add(platformMesh);
+      platforms2.push(platformMesh);
     });
+    return platforms2;
   }
-  function loadPlayerCharacter() {
+  function setupCourseTemplate(scene2, templateType) {
+    let size;
+    console.log("TEMPLATE DEBUG - Setting up course template:", templateType);
+    switch (templateType) {
+      case "small":
+        size = TEMPLATE_SIZES.SMALL;
+        break;
+      case "large":
+        size = TEMPLATE_SIZES.LARGE;
+        break;
+      case "medium":
+      default:
+        size = TEMPLATE_SIZES.MEDIUM;
+    }
+    const buildingBlocks2 = [];
+    console.log("TEMPLATE DEBUG - Building blocks array created, length:", buildingBlocks2.length);
+    const startGeometry = new BoxGeometry(5, 1, 5);
+    const startMaterial = new MeshStandardMaterial({
+      color: 65280,
+      roughness: 0.7
+    });
+    const startPlatform = new Mesh(startGeometry, startMaterial);
+    startPlatform.position.set(-size / 4, 1, -size / 4);
+    startPlatform.userData = { type: "start" };
+    scene2.add(startPlatform);
+    buildingBlocks2.push(startPlatform);
+    console.log("TEMPLATE DEBUG - Added start platform, blocks length:", buildingBlocks2.length);
+    const finishGeometry = new BoxGeometry(5, 1, 5);
+    const finishMaterial = new MeshStandardMaterial({
+      color: 255,
+      roughness: 0.7
+    });
+    const finishPlatform = new Mesh(finishGeometry, finishMaterial);
+    finishPlatform.position.set(size / 4, 1, size / 4);
+    finishPlatform.userData = { type: "finish" };
+    scene2.add(finishPlatform);
+    buildingBlocks2.push(finishPlatform);
+    console.log("TEMPLATE DEBUG - Added finish platform, blocks length:", buildingBlocks2.length);
+    addTemplateBoundaryMarkers(scene2, size);
+    const killzoneGeometry = new PlaneGeometry(400, 400);
+    const killzoneMaterial = new MeshBasicMaterial({
+      color: 16711680,
+      transparent: true,
+      opacity: 0.3
+    });
+    const killzone = new Mesh(killzoneGeometry, killzoneMaterial);
+    killzone.rotation.x = -Math.PI / 2;
+    killzone.position.y = -10;
+    scene2.add(killzone);
+    console.log("TEMPLATE DEBUG - Final building blocks array length:", buildingBlocks2.length);
+    return buildingBlocks2;
+  }
+  function addTemplateBoundaryMarkers(scene2, size) {
+    const cornerSize = 2;
+    const cornerHeight = 10;
+    const cornerGeometry = new BoxGeometry(cornerSize, cornerHeight, cornerSize);
+    const cornerMaterial = new MeshStandardMaterial({ color: 16753920 });
+    const halfSize = size / 2;
+    const corners = [
+      { x: -halfSize, z: -halfSize },
+      { x: halfSize, z: -halfSize },
+      { x: -halfSize, z: halfSize },
+      { x: halfSize, z: halfSize }
+    ];
+    corners.forEach((corner) => {
+      const cornerMarker = new Mesh(cornerGeometry, cornerMaterial);
+      cornerMarker.position.set(corner.x, cornerHeight / 2, corner.z);
+      cornerMarker.castShadow = true;
+      cornerMarker.userData = { type: "boundary" };
+      scene2.add(cornerMarker);
+    });
+    const gridMaterial = new LineBasicMaterial({ color: 16777215, opacity: 0.3, transparent: true });
+    for (let i = -halfSize; i <= halfSize; i += 10) {
+      const points = [
+        new Vector3(-halfSize, 0.1, i),
+        new Vector3(halfSize, 0.1, i)
+      ];
+      const geometry = new BufferGeometry().setFromPoints(points);
+      const line = new Line(geometry, gridMaterial);
+      scene2.add(line);
+    }
+    for (let i = -halfSize; i <= halfSize; i += 10) {
+      const points = [
+        new Vector3(i, 0.1, -halfSize),
+        new Vector3(i, 0.1, halfSize)
+      ];
+      const geometry = new BufferGeometry().setFromPoints(points);
+      const line = new Line(geometry, gridMaterial);
+      scene2.add(line);
+    }
+  }
+  function clearEnvironment(scene2) {
+    const objectsToKeep = ["Ground", "Light"];
+    console.log("ENV DEBUG - Clearing environment, objects before:", scene2.children.length);
+    const objectsToRemove = [];
+    scene2.children.forEach((child) => {
+      if (child instanceof Mesh && !objectsToKeep.includes(child.name)) {
+        objectsToRemove.push(child);
+      }
+    });
+    console.log("ENV DEBUG - Objects to remove:", objectsToRemove.length);
+    objectsToRemove.forEach((obj) => {
+      scene2.remove(obj);
+    });
+    console.log("ENV DEBUG - Scene objects after clearing:", scene2.children.length);
+  }
+
+  // src/systems/player.ts
+  function createPlaceholderPlayer(scene2) {
     const playerGeometry = new BoxGeometry(1, 2, 1);
     const playerMaterial = new MeshStandardMaterial({ color: 16711680 });
-    player = new Mesh(playerGeometry, playerMaterial);
-    player.position.set(0, 1, 0);
-    player.castShadow = true;
-    scene.add(player);
-    sendPositionUpdate();
+    const player2 = new Mesh(playerGeometry, playerMaterial);
+    player2.position.copy(PLAYER_SETTINGS.DEFAULT_POSITION);
+    player2.castShadow = true;
+    scene2.add(player2);
+    return player2;
   }
-  function setupEventListeners() {
-    console.log("Setting up global event listeners");
-    document.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("resize", handleResize);
-    window.addEventListener("blur", () => {
-      showOverlay();
-      resetAllControls();
+  function loadPlayerCharacter(scene2, onLoaded) {
+    const player2 = createPlaceholderPlayer(scene2);
+    sendPositionUpdate(player2);
+    onLoaded(player2, null, {
+      idle: null,
+      running: null,
+      jumping: null
     });
-    document.addEventListener("mouseleave", () => {
-      showOverlay();
-      resetAllControls();
-    });
-    if (isMobile) {
-      const gameContainer = document.getElementById("game-container");
-      if (gameContainer) {
-        gameContainer.addEventListener("touchstart", handleTouchStart);
-        gameContainer.addEventListener("touchmove", handleTouchMove);
-        gameContainer.addEventListener("touchend", handleTouchEnd);
-      }
-    }
-    window.addEventListener("message", (event) => {
-      if (event.data.type === "startGame") {
-        gameStarted = true;
-        builderMode = false;
-        console.log("Game started");
-        if (player) player.visible = true;
-        const builderUI = document.getElementById("builder-ui");
-        if (builderUI) builderUI.remove();
-        const builderToolbar = document.getElementById("builder-toolbar");
-        if (builderToolbar) builderToolbar.remove();
-      } else if (event.data.type === "startBuilder") {
-        const template = event.data.data?.template || "medium";
-        localStorage.setItem("builderTemplate", template);
-        enterBuilderMode(template);
-        console.log("Builder mode started with template:", template);
-      }
-    });
-    setInterval(() => {
-      if (builderMode) {
-        saveBuilderState();
-      }
-    }, 3e4);
   }
-  function handleKeyDown(event) {
-    console.log(`Key pressed: ${event.key}, Builder mode: ${builderMode}, Game started: ${gameStarted}, Overlay active: ${isOverlayActive}`);
-    if (isOverlayActive) return;
-    if (event.key.toLowerCase() === "b") {
-      console.log("B key pressed - attempting to toggle modes");
-      if (builderMode) {
-        console.log("Exiting builder mode");
-        exitBuilderMode();
-        event.preventDefault();
-      } else {
-        console.log("Entering builder mode");
-        const lastTemplate = localStorage.getItem("builderTemplate") || "medium";
-        enterBuilderMode(lastTemplate);
-        event.preventDefault();
-      }
-      return;
-    }
-    if (!builderMode) {
-      switch (event.key.toLowerCase()) {
-        case "w":
-          keyState.forward = true;
-          event.preventDefault();
-          break;
-        case "s":
-          keyState.backward = true;
-          event.preventDefault();
-          break;
-        case "a":
-          keyState.rotateLeft = true;
-          event.preventDefault();
-          break;
-        case "d":
-          keyState.rotateRight = true;
-          event.preventDefault();
-          break;
-        case " ":
-          keyState.jump = true;
-          event.preventDefault();
-          break;
-      }
-      return;
-    }
-    event.preventDefault();
-    const key = event.key.toLowerCase();
-    let controlChanged = false;
-    switch (key) {
-      case "w":
-        if (!buildControls.forward) {
-          buildControls.forward = true;
-          controlChanged = true;
-        }
-        break;
-      case "s":
-        if (!buildControls.backward) {
-          buildControls.backward = true;
-          controlChanged = true;
-        }
-        break;
-      case "a":
-        if (!buildControls.left) {
-          buildControls.left = true;
-          controlChanged = true;
-        }
-        break;
-      case "d":
-        if (!buildControls.right) {
-          buildControls.right = true;
-          controlChanged = true;
-        }
-        break;
-      case "q":
-        if (!buildControls.up) {
-          buildControls.up = true;
-          controlChanged = true;
-        }
-        break;
-      case "e":
-        if (!buildControls.down) {
-          buildControls.down = true;
-          controlChanged = true;
-        }
-        break;
-      case "arrowleft":
-        if (!buildControls.rotateLeft) {
-          buildControls.rotateLeft = true;
-          controlChanged = true;
-        }
-        break;
-      case "arrowright":
-        if (!buildControls.rotateRight) {
-          buildControls.rotateRight = true;
-          controlChanged = true;
-        }
-        break;
-    }
-    if (controlChanged) {
-      console.log(`Key pressed: ${key}, Controls:`, { ...buildControls });
-    }
-  }
-  function handleKeyUp(event) {
-    if (isOverlayActive) return;
-    if (!builderMode) {
-      switch (event.key.toLowerCase()) {
-        case "w":
-          keyState.forward = false;
-          break;
-        case "s":
-          keyState.backward = false;
-          break;
-        case "a":
-          keyState.rotateLeft = false;
-          break;
-        case "d":
-          keyState.rotateRight = false;
-          break;
-        case " ":
-          keyState.jump = false;
-          break;
-      }
-      return;
-    }
-    event.preventDefault();
-    const key = event.key.toLowerCase();
-    let controlChanged = false;
-    switch (key) {
-      case "w":
-        if (buildControls.forward) {
-          buildControls.forward = false;
-          controlChanged = true;
-        }
-        break;
-      case "s":
-        if (buildControls.backward) {
-          buildControls.backward = false;
-          controlChanged = true;
-        }
-        break;
-      case "a":
-        if (buildControls.left) {
-          buildControls.left = false;
-          controlChanged = true;
-        }
-        break;
-      case "d":
-        if (buildControls.right) {
-          buildControls.right = false;
-          controlChanged = true;
-        }
-        break;
-      case "q":
-        if (buildControls.up) {
-          buildControls.up = false;
-          controlChanged = true;
-        }
-        break;
-      case "e":
-        if (buildControls.down) {
-          buildControls.down = false;
-          controlChanged = true;
-        }
-        break;
-      case "arrowleft":
-        if (buildControls.rotateLeft) {
-          buildControls.rotateLeft = false;
-          controlChanged = true;
-        }
-        break;
-      case "arrowright":
-        if (buildControls.rotateRight) {
-          buildControls.rotateRight = false;
-          controlChanged = true;
-        }
-        break;
-    }
-    if (controlChanged) {
-      console.log(`Key released: ${key}, Controls:`, { ...buildControls });
-    }
-  }
-  function handleResize() {
-    if (camera && renderer) {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-  }
-  function createMobileControls() {
-    const joystickElement = document.createElement("div");
-    joystickElement.id = "joystick";
-    joystickElement.style.position = "absolute";
-    joystickElement.style.left = "100px";
-    joystickElement.style.bottom = "100px";
-    joystickElement.style.width = "100px";
-    joystickElement.style.height = "100px";
-    joystickElement.style.borderRadius = "50%";
-    joystickElement.style.backgroundColor = "rgba(255, 255, 255, 0.3)";
-    joystickElement.style.border = "2px solid white";
-    joystickElement.style.touchAction = "none";
-    const knobElement = document.createElement("div");
-    knobElement.id = "joystick-knob";
-    knobElement.style.position = "absolute";
-    knobElement.style.left = "35px";
-    knobElement.style.top = "35px";
-    knobElement.style.width = "30px";
-    knobElement.style.height = "30px";
-    knobElement.style.borderRadius = "50%";
-    knobElement.style.backgroundColor = "rgba(255, 255, 255, 0.7)";
-    joystickElement.appendChild(knobElement);
-    const jumpButton = document.createElement("div");
-    jumpButton.id = "jump-button";
-    jumpButton.style.position = "absolute";
-    jumpButton.style.right = "100px";
-    jumpButton.style.bottom = "100px";
-    jumpButton.style.width = "80px";
-    jumpButton.style.height = "80px";
-    jumpButton.style.borderRadius = "50%";
-    jumpButton.style.backgroundColor = "rgba(255, 80, 80, 0.7)";
-    jumpButton.style.border = "2px solid white";
-    jumpButton.style.display = "flex";
-    jumpButton.style.justifyContent = "center";
-    jumpButton.style.alignItems = "center";
-    jumpButton.style.color = "white";
-    jumpButton.style.fontWeight = "bold";
-    jumpButton.style.fontSize = "18px";
-    jumpButton.innerText = "JUMP";
-    jumpButton.style.touchAction = "none";
-    jumpButton.addEventListener("touchstart", () => {
-      keyState.jump = true;
-    });
-    jumpButton.addEventListener("touchend", () => {
-      keyState.jump = false;
-    });
-    const container = document.getElementById("game-container");
-    if (container) {
-      container.appendChild(joystickElement);
-      container.appendChild(jumpButton);
-    }
-  }
-  function handleTouchStart(event) {
-    const touch = event.touches[0];
-    const joystick = document.getElementById("joystick");
-    if (joystick) {
-      const joystickRect = joystick.getBoundingClientRect();
-      if (touch.clientX >= joystickRect.left && touch.clientX <= joystickRect.right && touch.clientY >= joystickRect.top && touch.clientY <= joystickRect.bottom) {
-        touchJoystick.active = true;
-        touchJoystick.startX = joystickRect.left + joystickRect.width / 2;
-        touchJoystick.startY = joystickRect.top + joystickRect.height / 2;
-        updateJoystickPosition(touch.clientX, touch.clientY);
-      }
-    }
-  }
-  function handleTouchMove(event) {
-    if (touchJoystick.active) {
-      event.preventDefault();
-      const touch = event.touches[0];
-      updateJoystickPosition(touch.clientX, touch.clientY);
-    }
-  }
-  function handleTouchEnd() {
-    if (touchJoystick.active) {
-      touchJoystick.active = false;
-      joystickPosition = { x: 0, y: 0 };
-      const knob = document.getElementById("joystick-knob");
-      if (knob) {
-        knob.style.left = "35px";
-        knob.style.top = "35px";
-      }
-      keyState.forward = false;
-      keyState.backward = false;
-      keyState.left = false;
-      keyState.right = false;
-    }
-  }
-  function updateJoystickPosition(touchX, touchY) {
-    const deltaX = touchX - touchJoystick.startX;
-    const deltaY = touchY - touchJoystick.startY;
-    const distance = Math.min(Math.sqrt(deltaX * deltaX + deltaY * deltaY), 50);
-    const angle = Math.atan2(deltaY, deltaX);
-    joystickPosition.x = Math.cos(angle) * (distance / 50);
-    joystickPosition.y = Math.sin(angle) * (distance / 50);
-    const knob = document.getElementById("joystick-knob");
-    if (knob) {
-      knob.style.left = 35 + joystickPosition.x * 35 + "px";
-      knob.style.top = 35 + joystickPosition.y * 35 + "px";
-    }
-    keyState.forward = joystickPosition.y < -0.3;
-    keyState.backward = joystickPosition.y > 0.3;
-    keyState.left = joystickPosition.x < -0.3;
-    keyState.right = joystickPosition.x > 0.3;
-  }
-  function updatePlayer(deltaTime) {
-    if (!player) return;
+  function updatePlayer(deltaTime, player2, playerState2, keyState2, platforms2, scene2, camera2, cameraRotationAngle2, updateCameraFn) {
+    if (!player2) return;
     const moveDirection = new Vector3(0, 0, 0);
-    if (keyState.rotateLeft) {
-      cameraRotationAngle += cameraRotationSpeed * deltaTime;
-    }
-    if (keyState.rotateRight) {
-      cameraRotationAngle -= cameraRotationSpeed * deltaTime;
-    }
     const cameraDirection = new Vector3();
-    camera.getWorldDirection(cameraDirection);
+    camera2.getWorldDirection(cameraDirection);
     cameraDirection.y = 0;
     cameraDirection.normalize();
     const right = new Vector3();
     right.crossVectors(new Vector3(0, 1, 0), cameraDirection).normalize();
-    if (keyState.forward) {
+    if (keyState2.forward) {
       moveDirection.add(cameraDirection);
     }
-    if (keyState.backward) {
+    if (keyState2.backward) {
       moveDirection.sub(cameraDirection);
     }
     if (moveDirection.lengthSq() > 0) {
       moveDirection.normalize();
-      moveDirection.multiplyScalar(playerState.speed * deltaTime);
-      player.position.x += moveDirection.x;
-      player.position.z += moveDirection.z;
+      moveDirection.multiplyScalar(playerState2.speed * deltaTime);
+      player2.position.x += moveDirection.x;
+      player2.position.z += moveDirection.z;
       const targetRotation = Math.atan2(moveDirection.x, moveDirection.z);
-      player.rotation.y = targetRotation;
+      player2.rotation.y = targetRotation;
     }
-    const currentGravity = playerState.velocity.y < 0 ? playerState.fallGravity : playerState.gravity;
-    playerState.velocity.y -= currentGravity * deltaTime;
-    if (keyState.jump && playerState.onGround) {
-      playerState.velocity.y = playerState.jumpPower;
-      playerState.onGround = false;
-      playerState.jumping = true;
-      console.log("Player jumped with velocity:", playerState.velocity.y);
+    const currentGravity = playerState2.velocity.y < 0 ? playerState2.fallGravity : playerState2.gravity;
+    playerState2.velocity.y -= currentGravity * deltaTime;
+    if (keyState2.jump && playerState2.onGround) {
+      playerState2.velocity.y = playerState2.jumpPower;
+      playerState2.onGround = false;
+      playerState2.jumping = true;
+      console.log("Player jumped with velocity:", playerState2.velocity.y);
     }
-    player.position.y += playerState.velocity.y * deltaTime;
+    player2.position.y += playerState2.velocity.y * deltaTime;
+    checkGroundCollision(player2, playerState2, platforms2, scene2);
+    if (player2.position.y < 1) {
+      player2.position.y = 1;
+      playerState2.velocity.y = 0;
+      playerState2.onGround = true;
+      playerState2.jumping = false;
+    }
+    updateCameraFn();
+    sendPositionUpdate(player2, playerState2);
+  }
+  function checkGroundCollision(player2, playerState2, platforms2, scene2) {
     const raycaster = new Raycaster();
     raycaster.set(
-      new Vector3(player.position.x, player.position.y, player.position.z),
+      new Vector3(player2.position.x, player2.position.y, player2.position.z),
       new Vector3(0, -1, 0)
     );
-    const intersects = raycaster.intersectObjects(
-      [...platforms, scene.children.find((child) => child instanceof Mesh && child.rotation.x === -Math.PI / 2)]
-    );
-    if (intersects.length > 0 && intersects[0].distance < 1.1) {
-      playerState.velocity.y = 0;
-      player.position.y = intersects[0].point.y + 1;
-      playerState.onGround = true;
-      playerState.jumping = false;
+    const groundMesh = scene2.children.find((child) => child instanceof Mesh && child.rotation.x === -Math.PI / 2);
+    const collisionObjects = [...platforms2];
+    if (groundMesh) collisionObjects.push(groundMesh);
+    const intersects = raycaster.intersectObjects(collisionObjects);
+    if (intersects.length > 0 && intersects[0].distance < PLAYER_SETTINGS.GROUND_CHECK_DISTANCE) {
+      playerState2.velocity.y = 0;
+      player2.position.y = intersects[0].point.y + 1;
+      playerState2.onGround = true;
+      playerState2.jumping = false;
     } else {
-      playerState.onGround = false;
+      playerState2.onGround = false;
     }
-    if (player.position.y < 1) {
-      player.position.y = 1;
-      playerState.velocity.y = 0;
-      playerState.onGround = true;
-      playerState.jumping = false;
-    }
-    updateCamera();
-    updatePlayerAnimation();
-    sendPositionUpdate();
   }
-  function updateCamera() {
-    if (!player) return;
-    const cameraDistance = 7;
-    const cameraHeight = 5;
-    const cameraX = player.position.x + cameraDistance * Math.sin(cameraRotationAngle);
-    const cameraZ = player.position.z + cameraDistance * Math.cos(cameraRotationAngle);
-    const targetPosition = new Vector3(cameraX, player.position.y + cameraHeight, cameraZ);
-    camera.position.lerp(targetPosition, 0.1);
-    camera.lookAt(player.position);
+  function updateCamera(camera2, player2, cameraRotationAngle2, followHeight = 5, followDistance = 7) {
+    if (!player2) return;
+    const cameraX = player2.position.x + followDistance * Math.sin(cameraRotationAngle2);
+    const cameraZ = player2.position.z + followDistance * Math.cos(cameraRotationAngle2);
+    const targetPosition = new Vector3(cameraX, player2.position.y + followHeight, cameraZ);
+    camera2.position.lerp(targetPosition, 0.1);
+    camera2.lookAt(player2.position);
   }
-  function updatePlayerAnimation() {
-    if (!mixer || !actions.idle || !actions.running || !actions.jumping) return;
+  function updatePlayerAnimation(mixer2, actions2, playerState2, keyState2) {
+    if (!mixer2 || !actions2.idle || !actions2.running || !actions2.jumping) return;
     let newAnimation = "idle";
-    if (playerState.jumping) {
+    if (playerState2.jumping) {
       newAnimation = "jumping";
-    } else if (keyState.forward || keyState.backward || keyState.left || keyState.right) {
+    } else if (keyState2.forward || keyState2.backward || keyState2.left || keyState2.right) {
       newAnimation = "running";
     }
-    if (newAnimation !== playerState.currentAnimation) {
-      const current = getActionByName(playerState.currentAnimation);
+    if (newAnimation !== playerState2.currentAnimation) {
+      const current = getActionByName(actions2, playerState2.currentAnimation);
       if (current) {
         current.fadeOut(0.2);
       }
-      const next = getActionByName(newAnimation);
+      const next = getActionByName(actions2, newAnimation);
       if (next) {
         next.reset().fadeIn(0.2).play();
       }
-      playerState.currentAnimation = newAnimation;
+      playerState2.currentAnimation = newAnimation;
     }
   }
-  function getActionByName(name) {
+  function getActionByName(actions2, name) {
     switch (name) {
       case "idle":
-        return actions.idle;
+        return actions2.idle;
       case "running":
-        return actions.running;
+        return actions2.running;
       case "jumping":
-        return actions.jumping;
+        return actions2.jumping;
       default:
         return null;
     }
   }
-  function sendPositionUpdate() {
-    if (!player) return;
-    window.parent.postMessage({
-      type: "positionUpdate",
-      data: {
-        x: player.position.x,
-        y: player.position.y,
-        z: player.position.z,
-        onGround: playerState.onGround,
-        animation: playerState.currentAnimation
-      }
-    }, "*");
+  function sendPositionUpdate(player2, playerState2) {
+    if (!player2) return;
+    sendMessageToParent("positionUpdate", {
+      x: player2.position.x,
+      y: player2.position.y,
+      z: player2.position.z,
+      onGround: playerState2?.onGround ?? true,
+      animation: playerState2?.currentAnimation ?? "idle"
+    });
   }
-  function animate() {
-    requestAnimationFrame(animate);
-    const deltaTime = Math.min(clock.getDelta(), 0.1);
-    if (builderMode) {
-      updateBuilderCamera(deltaTime);
-      updatePlacementPreview();
-    } else if (gameStarted && player) {
-      updatePlayer(deltaTime);
-    }
-    if (mixer) {
-      mixer.update(deltaTime);
-    }
-    renderer.render(scene, camera);
+  function resetPlayerState() {
+    return {
+      position: PLAYER_SETTINGS.DEFAULT_POSITION.clone(),
+      velocity: new Vector3(0, 0, 0),
+      rotation: new Euler(0, 0, 0),
+      onGround: true,
+      jumping: false,
+      speed: PLAYER_SETTINGS.MOVEMENT_SPEED,
+      jumpPower: PLAYER_SETTINGS.JUMP_POWER,
+      gravity: PLAYER_SETTINGS.GRAVITY,
+      fallGravity: PLAYER_SETTINGS.FALL_GRAVITY,
+      currentAnimation: "idle"
+    };
   }
-  function updateBuilderCamera(deltaTime) {
-    if (!builderMode) return;
+
+  // src/systems/builder.ts
+  function updateBuilderCamera(camera2, buildControls2, deltaTime) {
     const direction = new Vector3(0, 0, -1);
-    direction.applyQuaternion(camera.quaternion);
+    direction.applyQuaternion(camera2.quaternion);
     direction.y = 0;
     direction.normalize();
     const right = new Vector3(1, 0, 0);
-    right.applyQuaternion(camera.quaternion);
+    right.applyQuaternion(camera2.quaternion);
     right.y = 0;
     right.normalize();
-    const moveSpeed = buildCameraSpeed;
+    const moveSpeed = BUILDER_SETTINGS.CAMERA_SPEED;
     let moved = false;
-    if (buildControls.forward) {
-      camera.position.addScaledVector(direction, moveSpeed);
+    if (buildControls2.forward) {
+      camera2.position.addScaledVector(direction, moveSpeed);
       moved = true;
     }
-    if (buildControls.backward) {
-      camera.position.addScaledVector(direction, -moveSpeed);
+    if (buildControls2.backward) {
+      camera2.position.addScaledVector(direction, -moveSpeed);
       moved = true;
     }
-    if (buildControls.left) {
-      camera.position.addScaledVector(right, -moveSpeed);
+    if (buildControls2.left) {
+      camera2.position.addScaledVector(right, -moveSpeed);
       moved = true;
     }
-    if (buildControls.right) {
-      camera.position.addScaledVector(right, moveSpeed);
+    if (buildControls2.right) {
+      camera2.position.addScaledVector(right, moveSpeed);
       moved = true;
     }
-    if (buildControls.up) {
-      camera.position.y += moveSpeed;
+    if (buildControls2.up) {
+      camera2.position.y += moveSpeed;
       moved = true;
     }
-    if (buildControls.down) {
-      camera.position.y -= moveSpeed;
+    if (buildControls2.down) {
+      camera2.position.y -= moveSpeed;
       moved = true;
     }
-    if (buildControls.rotateLeft) {
-      camera.rotation.y += 0.05;
+    if (buildControls2.rotateLeft) {
+      camera2.rotation.y += BUILDER_SETTINGS.ROTATION_SPEED;
       moved = true;
     }
-    if (buildControls.rotateRight) {
-      camera.rotation.y -= 0.05;
+    if (buildControls2.rotateRight) {
+      camera2.rotation.y -= BUILDER_SETTINGS.ROTATION_SPEED;
       moved = true;
     }
-    camera.rotation.x = -0.3;
-    camera.rotation.z = 0;
+    camera2.rotation.z = 0;
   }
-  function enterBuilderMode(templateSize = "medium") {
-    console.log("Entering builder mode with template:", templateSize);
-    builderMode = true;
-    gameStarted = false;
-    courseTemplate = templateSize;
-    if (player) {
-      player.visible = false;
+  function createPlacementPreview(scene2, selectedBlockType2) {
+    let geometry, material;
+    switch (selectedBlockType2) {
+      case "start":
+        geometry = new BoxGeometry(
+          BLOCK_TYPES.START.size.width,
+          BLOCK_TYPES.START.size.height,
+          BLOCK_TYPES.START.size.depth
+        );
+        material = new MeshStandardMaterial({
+          color: BLOCK_TYPES.START.color,
+          transparent: true,
+          opacity: 0.5
+        });
+        break;
+      case "finish":
+        geometry = new BoxGeometry(
+          BLOCK_TYPES.FINISH.size.width,
+          BLOCK_TYPES.FINISH.size.height,
+          BLOCK_TYPES.FINISH.size.depth
+        );
+        material = new MeshStandardMaterial({
+          color: BLOCK_TYPES.FINISH.color,
+          transparent: true,
+          opacity: 0.5
+        });
+        break;
+      case "platform":
+      default:
+        geometry = new BoxGeometry(
+          BLOCK_TYPES.PLATFORM.size.width,
+          BLOCK_TYPES.PLATFORM.size.height,
+          BLOCK_TYPES.PLATFORM.size.depth
+        );
+        material = new MeshStandardMaterial({
+          color: BLOCK_TYPES.PLATFORM.color,
+          transparent: true,
+          opacity: 0.5
+        });
     }
-    buildControls = {
-      forward: false,
-      backward: false,
-      left: false,
-      right: false,
-      up: false,
-      down: false,
-      rotateLeft: false,
-      rotateRight: false
+    const preview = new Mesh(geometry, material);
+    scene2.add(preview);
+    return preview;
+  }
+  function updatePlacementPreview(camera2, placementPreview2, intersectables) {
+    if (!placementPreview2) return;
+    const direction = new Vector3(0, 0, -1);
+    direction.applyQuaternion(camera2.quaternion);
+    const raycaster = new Raycaster();
+    raycaster.set(camera2.position, direction);
+    const intersects = raycaster.intersectObjects(intersectables);
+    if (intersects.length > 0 && intersects[0].distance < BUILDER_SETTINGS.PLACEMENT_PREVIEW_DISTANCE) {
+      const intersectPoint = intersects[0].point;
+      const normal = intersects[0].face?.normal || new Vector3(0, 1, 0);
+      const offset = 0.5;
+      placementPreview2.position.copy(intersectPoint).add(normal.multiplyScalar(offset));
+      if (BUILDER_SETTINGS.PLACEMENT_GRID_SNAP) {
+        placementPreview2.position.x = Math.round(placementPreview2.position.x);
+        placementPreview2.position.y = Math.round(placementPreview2.position.y);
+        placementPreview2.position.z = Math.round(placementPreview2.position.z);
+      }
+      placementPreview2.visible = true;
+    } else {
+      placementPreview2.position.copy(camera2.position).add(direction.multiplyScalar(10));
+      if (BUILDER_SETTINGS.PLACEMENT_GRID_SNAP) {
+        placementPreview2.position.x = Math.round(placementPreview2.position.x);
+        placementPreview2.position.y = Math.round(placementPreview2.position.y);
+        placementPreview2.position.z = Math.round(placementPreview2.position.z);
+      }
+    }
+  }
+  function placeBlock(scene2, placementPreview2, selectedBlockType2, buildingBlocks2, platforms2) {
+    if (!placementPreview2) return;
+    console.log("BLOCK DEBUG - Building blocks array before:", buildingBlocks2.length);
+    console.log("BLOCK DEBUG - Platforms array before:", platforms2.length);
+    const position = placementPreview2.position.clone();
+    const existingBlockIndex = buildingBlocks2.findIndex(
+      (block2) => block2.position.distanceTo(position) < 0.1
+    );
+    if (existingBlockIndex !== -1) {
+      console.log("BLOCK DEBUG - Block already exists at this position, not placing another one");
+      return;
+    }
+    let geometry, material;
+    switch (selectedBlockType2) {
+      case "start":
+        geometry = new BoxGeometry(
+          BLOCK_TYPES.START.size.width,
+          BLOCK_TYPES.START.size.height,
+          BLOCK_TYPES.START.size.depth
+        );
+        material = new MeshStandardMaterial({
+          color: BLOCK_TYPES.START.color,
+          roughness: 0.7
+        });
+        break;
+      case "finish":
+        geometry = new BoxGeometry(
+          BLOCK_TYPES.FINISH.size.width,
+          BLOCK_TYPES.FINISH.size.height,
+          BLOCK_TYPES.FINISH.size.depth
+        );
+        material = new MeshStandardMaterial({
+          color: BLOCK_TYPES.FINISH.color,
+          roughness: 0.7
+        });
+        break;
+      case "platform":
+      default:
+        geometry = new BoxGeometry(
+          BLOCK_TYPES.PLATFORM.size.width,
+          BLOCK_TYPES.PLATFORM.size.height,
+          BLOCK_TYPES.PLATFORM.size.depth
+        );
+        material = new MeshStandardMaterial({
+          color: BLOCK_TYPES.PLATFORM.color,
+          roughness: 0.7
+        });
+    }
+    const block = new Mesh(geometry, material);
+    block.position.copy(placementPreview2.position);
+    block.userData = { type: selectedBlockType2 };
+    block.castShadow = true;
+    block.receiveShadow = true;
+    scene2.add(block);
+    buildingBlocks2.push(block);
+    if (!platforms2.includes(block)) {
+      platforms2.push(block);
+    }
+    console.log("BLOCK DEBUG - Building blocks array after:", buildingBlocks2.length);
+    console.log("BLOCK DEBUG - Platforms array after:", platforms2.length);
+    console.log("BLOCK DEBUG - Arrays are same object?", buildingBlocks2 === platforms2);
+  }
+  function removeBlock(scene2, placementPreview2, buildingBlocks2, platforms2) {
+    if (!placementPreview2) return;
+    console.log("BLOCK DEBUG - Remove - Building blocks before:", buildingBlocks2.length);
+    console.log("BLOCK DEBUG - Remove - Platforms before:", platforms2.length);
+    let closestIndex = -1;
+    let minDistance = Infinity;
+    for (let i = 0; i < buildingBlocks2.length; i++) {
+      const block = buildingBlocks2[i];
+      const distance = block.position.distanceTo(placementPreview2.position);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestIndex = i;
+      }
+    }
+    if (closestIndex !== -1 && minDistance < BUILDER_SETTINGS.REMOVAL_RANGE) {
+      const blockToRemove = buildingBlocks2[closestIndex];
+      scene2.remove(blockToRemove);
+      buildingBlocks2.splice(closestIndex, 1);
+      const platformIndex = platforms2.indexOf(blockToRemove);
+      if (platformIndex !== -1) {
+        platforms2.splice(platformIndex, 1);
+      }
+      console.log("BLOCK DEBUG - Remove - Building blocks after:", buildingBlocks2.length);
+      console.log("BLOCK DEBUG - Remove - Platforms after:", platforms2.length);
+    }
+  }
+  function saveCourse(buildingBlocks2, courseTemplate2) {
+    const blocks = buildingBlocks2.map((block) => ({
+      position: {
+        x: block.position.x,
+        y: block.position.y,
+        z: block.position.z
+      },
+      type: block.userData.type,
+      size: block.geometry.type.includes("Box") ? block.geometry.parameters : { width: 3, height: 1, depth: 3 }
+    }));
+    const startBlock = buildingBlocks2.find((block) => block.userData.type === "start");
+    const finishBlock = buildingBlocks2.find((block) => block.userData.type === "finish");
+    if (!startBlock || !finishBlock) {
+      console.error("Course must have start and finish blocks");
+      return;
+    }
+    const courseData = {
+      template: courseTemplate2,
+      blocks,
+      startPosition: {
+        x: startBlock.position.x,
+        y: startBlock.position.y + 1,
+        // Player spawns above the start block
+        z: startBlock.position.z
+      },
+      finishPosition: {
+        x: finishBlock.position.x,
+        y: finishBlock.position.y,
+        z: finishBlock.position.z
+      }
     };
-    setupBuilderUI();
-    setupBuilderEventListeners();
-    createBuilderDebugUI();
-    createBuilderToolbar();
-    currentBuilderTool = "build";
-    selectedBlockType = "platform";
-    createPlacementPreview();
-    saveBuilderState();
-    console.log("Builder mode entered successfully");
+    sendMessageToParent("courseCreated", courseData);
+    console.log("Course saved:", courseData);
   }
-  function setupBuilderEventListeners() {
-    document.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("keyup", handleKeyUp);
+  function createBuilderUI(selectedBlockType2, buildingBlocks2, exitBuilderModeFn, saveFn, onBlockTypeChange) {
     const container = document.getElementById("game-container");
     if (!container) return;
-    camera.rotation.order = "YXZ";
-    container.addEventListener("click", (event) => {
-      if (builderMode && currentBuilderTool === "build" && !isMouseDown) {
-        placeBlock();
-      } else if (builderMode && currentBuilderTool === "remove" && !isMouseDown) {
-        removeBlock();
+    removeElement("builder-ui");
+    const builderUI = createElement(
+      "div",
+      { id: "builder-ui" },
+      {
+        position: "absolute",
+        top: "80px",
+        left: "10px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "10px",
+        backgroundColor: "rgba(0, 0, 0, 0.7)",
+        color: "white",
+        padding: "15px",
+        borderRadius: "8px",
+        zIndex: "100",
+        maxWidth: "250px"
+      }
+    );
+    const title = createElement(
+      "h2",
+      {},
+      {
+        margin: "0 0 10px 0",
+        textAlign: "center"
+      },
+      "Course Builder"
+    );
+    builderUI.appendChild(title);
+    const blockTypeLabel = createElement(
+      "div",
+      {},
+      { fontWeight: "bold" },
+      "Block Type:"
+    );
+    builderUI.appendChild(blockTypeLabel);
+    const blockTypeSelector = createElement(
+      "div",
+      {},
+      {
+        display: "flex",
+        gap: "5px",
+        marginBottom: "10px"
+      }
+    );
+    const createBlockButton = (text, type, color) => {
+      const colorIndicator = createElement(
+        "div",
+        {},
+        {
+          width: "10px",
+          height: "10px",
+          backgroundColor: color,
+          display: "inline-block",
+          marginRight: "5px",
+          borderRadius: "2px"
+        }
+      );
+      const button = createElement(
+        "button",
+        { class: "block-button" },
+        {
+          padding: "8px",
+          backgroundColor: type === selectedBlockType2 ? "#4CAF50" : "#f1f1f1",
+          border: "none",
+          borderRadius: "4px",
+          cursor: "pointer",
+          color: type === selectedBlockType2 ? "white" : "black",
+          flex: "1"
+        },
+        text
+      );
+      button.prepend(colorIndicator);
+      button.addEventListener("click", () => {
+        onBlockTypeChange(type);
+        Array.from(blockTypeSelector.children).forEach((child) => {
+          child.style.backgroundColor = "#f1f1f1";
+          child.style.color = "black";
+        });
+        button.style.backgroundColor = "#4CAF50";
+        button.style.color = "white";
+      });
+      return button;
+    };
+    blockTypeSelector.appendChild(createBlockButton("Platform", "platform", "#cccccc"));
+    blockTypeSelector.appendChild(createBlockButton("Start", "start", "#00ff00"));
+    blockTypeSelector.appendChild(createBlockButton("Finish", "finish", "#0000ff"));
+    builderUI.appendChild(blockTypeSelector);
+    const buttonGroup = createElement(
+      "div",
+      { class: "button-group" },
+      {
+        display: "flex",
+        flexDirection: "column",
+        gap: "8px",
+        marginBottom: "10px"
+      }
+    );
+    const saveButton = createElement(
+      "button",
+      { class: "save-button" },
+      {
+        padding: "10px",
+        backgroundColor: "#2196F3",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer"
+      },
+      "Save Course"
+    );
+    saveButton.addEventListener("click", saveFn);
+    buttonGroup.appendChild(saveButton);
+    const exitButton = createElement(
+      "button",
+      {},
+      {
+        padding: "8px",
+        backgroundColor: "#4CAF50",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer"
+      },
+      "Enter Player Mode (B)"
+    );
+    exitButton.addEventListener("click", exitBuilderModeFn);
+    buttonGroup.appendChild(exitButton);
+    const resetButton = createElement(
+      "button",
+      {},
+      {
+        padding: "8px",
+        backgroundColor: "#f44336",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer",
+        fontSize: "0.9em"
+      },
+      "Reset Storage"
+    );
+    resetButton.addEventListener("click", () => {
+      if (confirm("This will reset all saved builder data. Continue?")) {
+        try {
+          if (typeof window.resetBuilderLocalStorage === "function") {
+            window.resetBuilderLocalStorage();
+          } else {
+            localStorage.removeItem("builderState");
+            localStorage.removeItem("builderTemplate");
+            localStorage.removeItem("lastMode");
+          }
+          alert("Storage reset successful. Refresh the page to see changes.");
+        } catch (error) {
+          console.error("Failed to reset localStorage:", error);
+          alert("Failed to reset storage. See console for details.");
+        }
       }
     });
-    container.addEventListener("mousedown", (event) => {
-      if (event.button === 2) {
-        isMouseDown = true;
-        lastMouseX = event.clientX;
-        lastMouseY = event.clientY;
-        event.preventDefault();
+    buttonGroup.appendChild(resetButton);
+    builderUI.appendChild(buttonGroup);
+    const instructions = createElement(
+      "div",
+      { class: "control-instructions" },
+      {
+        backgroundColor: "rgba(0, 0, 0, 0.7)",
+        padding: "10px",
+        borderRadius: "4px",
+        maxWidth: "220px"
+      },
+      `
+    <h3 style="margin: 0 0 5px 0">Builder Controls:</h3>
+    <p style="margin: 2px 0">WASD - Move horizontally</p>
+    <p style="margin: 2px 0">Q/E - Move up/down</p>
+    <p style="margin: 2px 0">Arrow Left/Right - Rotate camera</p>
+    <p style="margin: 2px 0">Right-click + drag - Look around</p>
+    <p style="margin: 2px 0">Left Click - Place block</p>
+    <p style="margin: 2px 0">Use toolbar for tools</p>
+    <p style="margin: 2px 0; color: #ffeb3b">Need start and finish blocks!</p>
+    `
+    );
+    builderUI.appendChild(instructions);
+    const counterContainer = createElement(
+      "div",
+      { id: "block-counter" },
+      {
+        marginTop: "10px",
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+        padding: "5px",
+        borderRadius: "4px"
       }
-    });
-    container.addEventListener("mousemove", (event) => {
-      if (!isMouseDown) return;
-      const deltaX = event.clientX - lastMouseX;
-      const deltaY = event.clientY - lastMouseY;
-      camera.rotation.y -= deltaX * 5e-3;
-      const newPitch = camera.rotation.x - deltaY * 5e-3;
-      camera.rotation.x = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, newPitch));
-      camera.rotation.z = 0;
-      lastMouseX = event.clientX;
-      lastMouseY = event.clientY;
-      event.preventDefault();
-    });
-    container.addEventListener("mouseup", (event) => {
-      if (event.button === 2) {
-        isMouseDown = false;
-        event.preventDefault();
+    );
+    builderUI.appendChild(counterContainer);
+    const updateBlockCounter = () => {
+      if (!counterContainer) return;
+      const totalBlocks = buildingBlocks2.length;
+      const startBlocks = buildingBlocks2.filter((b) => b.userData && b.userData.type === "start").length;
+      const finishBlocks = buildingBlocks2.filter((b) => b.userData && b.userData.type === "finish").length;
+      counterContainer.innerHTML = `
+      <p style="margin: 0">Blocks placed: ${totalBlocks}</p>
+      <p style="margin: 0">Start blocks: ${startBlocks}</p>
+      <p style="margin: 0">Finish blocks: ${finishBlocks}</p>
+    `;
+    };
+    updateBlockCounter();
+    container.appendChild(builderUI);
+    let lastTotalBlocks = -1;
+    const counterInterval = setInterval(() => {
+      if (buildingBlocks2.length !== lastTotalBlocks) {
+        lastTotalBlocks = buildingBlocks2.length;
+        updateBlockCounter();
       }
-    });
-    container.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-    });
+    }, 500);
+    const cleanup = () => {
+      clearInterval(counterInterval);
+    };
+    window.__blockCounterCleanup = cleanup;
   }
-  function createBuilderToolbar() {
+  function createBuilderToolbar(currentBuilderTool2, onToolChange) {
     const container = document.getElementById("game-container");
     if (!container) return;
-    const existingToolbar = document.getElementById("builder-toolbar");
-    if (existingToolbar) {
-      existingToolbar.remove();
-    }
-    const toolbar = document.createElement("div");
-    toolbar.id = "builder-toolbar";
-    toolbar.style.position = "absolute";
-    toolbar.style.bottom = "20px";
-    toolbar.style.left = "50%";
-    toolbar.style.transform = "translateX(-50%)";
-    toolbar.style.display = "flex";
-    toolbar.style.gap = "10px";
-    toolbar.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
-    toolbar.style.padding = "10px";
-    toolbar.style.borderRadius = "10px";
-    toolbar.style.zIndex = "1000";
+    removeElement("builder-toolbar");
+    const toolbar = createElement(
+      "div",
+      { id: "builder-toolbar" },
+      {
+        position: "absolute",
+        bottom: "20px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        display: "flex",
+        gap: "10px",
+        backgroundColor: "rgba(0, 0, 0, 0.7)",
+        padding: "10px",
+        borderRadius: "10px",
+        zIndex: "1000"
+      }
+    );
     const tools = [
       { id: "build", icon: "\u{1F9F1}", label: "Build" },
       { id: "remove", icon: "\u{1F5D1}\uFE0F", label: "Remove" },
       { id: "camera", icon: "\u{1F3A5}", label: "Camera" }
     ];
     tools.forEach((tool) => {
-      const button = document.createElement("button");
-      button.id = `tool-${tool.id}`;
-      button.innerHTML = `<div style="font-size: 24px">${tool.icon}</div><div>${tool.label}</div>`;
-      button.style.display = "flex";
-      button.style.flexDirection = "column";
-      button.style.alignItems = "center";
-      button.style.justifyContent = "center";
-      button.style.backgroundColor = currentBuilderTool === tool.id ? "#4CAF50" : "#333";
-      button.style.color = "white";
-      button.style.border = "none";
-      button.style.borderRadius = "8px";
-      button.style.padding = "10px 15px";
-      button.style.cursor = "pointer";
-      button.style.width = "80px";
-      button.style.height = "80px";
+      const button = createElement(
+        "button",
+        { id: `tool-${tool.id}` },
+        {
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: currentBuilderTool2 === tool.id ? "#4CAF50" : "#333",
+          color: "white",
+          border: "none",
+          borderRadius: "8px",
+          padding: "10px 15px",
+          cursor: "pointer",
+          width: "80px",
+          height: "80px"
+        },
+        `<div style="font-size: 24px">${tool.icon}</div><div>${tool.label}</div>`
+      );
       button.addEventListener("click", () => {
-        currentBuilderTool = tool.id;
-        updateToolbarSelection();
-        if (placementPreview) {
-          placementPreview.visible = tool.id === "build";
-        }
-        saveBuilderState();
+        onToolChange(tool.id);
       });
       toolbar.appendChild(button);
     });
     container.appendChild(toolbar);
   }
-  function updateToolbarSelection() {
+  function updateToolbarSelection(currentBuilderTool2) {
     const tools = ["build", "remove", "camera"];
     tools.forEach((tool) => {
       const button = document.getElementById(`tool-${tool}`);
       if (button) {
-        button.style.backgroundColor = currentBuilderTool === tool ? "#4CAF50" : "#333";
+        button.style.backgroundColor = currentBuilderTool2 === tool ? "#4CAF50" : "#333";
       }
     });
     const container = document.getElementById("game-container");
     if (container) {
-      switch (currentBuilderTool) {
+      switch (currentBuilderTool2) {
         case "build":
           container.style.cursor = "cell";
           break;
@@ -24645,277 +25026,548 @@ void main() {
       }
     }
   }
-  function createPlacementPreview() {
-    if (placementPreview) {
-      scene.remove(placementPreview);
-      placementPreview = null;
-    }
-    let geometry, material;
-    switch (selectedBlockType) {
-      case "start":
-        geometry = new BoxGeometry(5, 1, 5);
-        material = new MeshStandardMaterial({
-          color: 65280,
-          transparent: true,
-          opacity: 0.5
-        });
-        break;
-      case "finish":
-        geometry = new BoxGeometry(5, 1, 5);
-        material = new MeshStandardMaterial({
-          color: 255,
-          transparent: true,
-          opacity: 0.5
-        });
-        break;
-      case "platform":
-      default:
-        geometry = new BoxGeometry(3, 1, 3);
-        material = new MeshStandardMaterial({
-          color: 13421772,
-          transparent: true,
-          opacity: 0.5
-        });
-    }
-    placementPreview = new Mesh(geometry, material);
-    scene.add(placementPreview);
-    updatePlacementPreview();
+  function createBuilderDebugUI(buildControls2) {
+    const container = document.getElementById("game-container");
+    if (!container) return;
+    const debugUI = createElement(
+      "div",
+      { id: "builder-debug" },
+      {
+        position: "absolute",
+        top: "10px",
+        right: "10px",
+        backgroundColor: "rgba(0, 0, 0, 0.7)",
+        color: "white",
+        padding: "10px",
+        borderRadius: "5px",
+        fontFamily: "monospace",
+        zIndex: "1000",
+        maxWidth: "180px"
+      }
+    );
+    container.appendChild(debugUI);
+    const updateInterval = setInterval(() => {
+      const debugElement = document.getElementById("builder-debug");
+      if (!debugElement) {
+        clearInterval(updateInterval);
+        return;
+      }
+      debugElement.innerHTML = `
+      <div style="font-weight:bold;">Builder Controls:</div>
+      <div>W (Forward): ${buildControls2.forward}</div>
+      <div>S (Back): ${buildControls2.backward}</div>
+      <div>A (Left): ${buildControls2.left}</div>
+      <div>D (Right): ${buildControls2.right}</div>
+      <div>Q (Up): ${buildControls2.up}</div>
+      <div>E (Down): ${buildControls2.down}</div>
+      <div>\u2190 (Rotate L): ${buildControls2.rotateLeft}</div>
+      <div>\u2192 (Rotate R): ${buildControls2.rotateRight}</div>
+    `;
+    }, 100);
   }
-  function updatePlacementPreview() {
-    if (!placementPreview) return;
-    const direction = new Vector3(0, 0, -1);
-    direction.applyQuaternion(camera.quaternion);
-    const raycaster = new Raycaster();
-    raycaster.set(camera.position, direction);
-    const intersectables = [...buildingBlocks, ...platforms];
-    const ground = scene.children.find((child) => child instanceof Mesh && child.rotation.x === -Math.PI / 2);
-    if (ground) intersectables.push(ground);
-    const intersects = raycaster.intersectObjects(intersectables);
-    if (intersects.length > 0 && intersects[0].distance < 20) {
-      const intersectPoint = intersects[0].point;
-      const normal = intersects[0].face?.normal || new Vector3(0, 1, 0);
-      const offset = 0.5;
-      placementPreview.position.copy(intersectPoint).add(normal.multiplyScalar(offset));
-      placementPreview.position.x = Math.round(placementPreview.position.x);
-      placementPreview.position.y = Math.round(placementPreview.position.y);
-      placementPreview.position.z = Math.round(placementPreview.position.z);
-      placementPreview.visible = true;
-    } else {
-      placementPreview.position.copy(camera.position).add(direction.multiplyScalar(10));
-      placementPreview.position.x = Math.round(placementPreview.position.x);
-      placementPreview.position.y = Math.round(placementPreview.position.y);
-      placementPreview.position.z = Math.round(placementPreview.position.z);
-    }
+
+  // src/components/Overlay.ts
+  var isOverlayActive = false;
+  function showOverlay(resetControlsFn) {
+    if (isOverlayActive) return;
+    const container = document.getElementById("game-container");
+    if (!container) return;
+    resetControlsFn();
+    const overlay = createElement(
+      "div",
+      { id: "game-overlay" },
+      {
+        position: "absolute",
+        top: "0",
+        left: "0",
+        width: "100%",
+        height: "100%",
+        backgroundColor: "rgba(0, 0, 0, 0.7)",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        zIndex: "9999",
+        cursor: "pointer"
+      }
+    );
+    const message = createElement(
+      "div",
+      {},
+      {
+        color: "white",
+        fontSize: "24px",
+        fontFamily: "Arial, sans-serif",
+        padding: "20px",
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+        borderRadius: "10px",
+        border: "2px solid white"
+      },
+      "Click to play"
+    );
+    overlay.appendChild(message);
+    container.appendChild(overlay);
+    isOverlayActive = true;
+    overlay.addEventListener("click", () => hideOverlay());
   }
-  function placeBlock() {
-    if (!placementPreview) return;
-    let geometry, material;
-    switch (selectedBlockType) {
-      case "start":
-        geometry = new BoxGeometry(5, 1, 5);
-        material = new MeshStandardMaterial({
-          color: 65280,
-          roughness: 0.7
-        });
-        break;
-      case "finish":
-        geometry = new BoxGeometry(5, 1, 5);
-        material = new MeshStandardMaterial({
-          color: 255,
-          roughness: 0.7
-        });
-        break;
-      case "platform":
-      default:
-        geometry = new BoxGeometry(3, 1, 3);
-        material = new MeshStandardMaterial({
-          color: 13421772,
-          roughness: 0.7
-        });
-    }
-    const block = new Mesh(geometry, material);
-    block.position.copy(placementPreview.position);
-    block.userData = { type: selectedBlockType };
-    block.castShadow = true;
-    block.receiveShadow = true;
-    scene.add(block);
-    buildingBlocks.push(block);
-    platforms.push(block);
-    console.log(`Placed ${selectedBlockType} block at position: `, block.position);
+  function hideOverlay() {
+    removeElement("game-overlay");
+    isOverlayActive = false;
   }
-  function removeBlock() {
-    if (!placementPreview) return;
-    let closestIndex = -1;
-    let minDistance = Infinity;
-    for (let i = 0; i < buildingBlocks.length; i++) {
-      const block = buildingBlocks[i];
-      if (placementPreview) {
-        const distance = block.position.distanceTo(placementPreview.position);
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestIndex = i;
+  function getOverlayActive() {
+    return isOverlayActive;
+  }
+  function showNotification(message, duration = 3e3) {
+    const container = document.getElementById("game-container");
+    if (!container) return;
+    const notification = createElement(
+      "div",
+      { id: "game-notification" },
+      {
+        position: "absolute",
+        bottom: "20px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        backgroundColor: "rgba(0, 0, 0, 0.7)",
+        color: "white",
+        padding: "10px 20px",
+        borderRadius: "5px",
+        zIndex: "9000",
+        opacity: "1",
+        transition: "opacity 0.3s ease-in-out"
+      },
+      message
+    );
+    container.appendChild(notification);
+    setTimeout(() => {
+      notification.style.opacity = "0";
+      setTimeout(() => {
+        removeElement("game-notification");
+      }, 300);
+    }, duration);
+  }
+
+  // src/systems/input.ts
+  function setupEventListeners(keyState2, buildControls2, builderMode2, gameStarted2, showOverlayFn, resetControlsFn, onModeToggleFn, onWindowResizeFn) {
+    console.log("Setting up global event listeners");
+    document.addEventListener("keydown", (event) => {
+      handleKeyDown(
+        event,
+        keyState2,
+        buildControls2,
+        builderMode2,
+        gameStarted2,
+        onModeToggleFn
+      );
+    });
+    document.addEventListener("keyup", (event) => {
+      handleKeyUp(event, keyState2, buildControls2, builderMode2);
+    });
+    window.addEventListener("resize", onWindowResizeFn);
+    window.addEventListener("blur", () => {
+      showOverlayFn();
+      resetControlsFn();
+    });
+    document.addEventListener("mouseleave", () => {
+      showOverlayFn();
+      resetControlsFn();
+    });
+    window.addEventListener("message", (event) => {
+      handleParentMessage(event, gameStarted2, builderMode2);
+    });
+  }
+  function handleKeyDown(event, keyState2, buildControls2, builderMode2, gameStarted2, onModeToggleFn) {
+    const storedMode = localStorage.getItem("lastMode");
+    const isInBuilderMode = builderMode2 || storedMode === "builder";
+    if (getOverlayActive()) {
+      return;
+    }
+    if (event.key.toLowerCase() === "b") {
+      console.log(`B key pressed - toggling modes. Current mode: ${isInBuilderMode ? "builder" : "player"}`);
+      onModeToggleFn();
+      event.preventDefault();
+      return;
+    }
+    if (!isInBuilderMode) {
+      switch (event.key.toLowerCase()) {
+        case "w":
+          keyState2.forward = true;
+          event.preventDefault();
+          break;
+        case "s":
+          keyState2.backward = true;
+          event.preventDefault();
+          break;
+        case "a":
+          keyState2.rotateLeft = true;
+          event.preventDefault();
+          break;
+        case "d":
+          keyState2.rotateRight = true;
+          event.preventDefault();
+          break;
+        case " ":
+          keyState2.jump = true;
+          event.preventDefault();
+          break;
+      }
+      return;
+    }
+    event.preventDefault();
+    const key = event.key.toLowerCase();
+    let controlChanged = false;
+    switch (key) {
+      case "w":
+        if (!buildControls2.forward) {
+          buildControls2.forward = true;
+          controlChanged = true;
         }
-      }
-    }
-    if (closestIndex !== -1 && minDistance < 5) {
-      const blockToRemove = buildingBlocks[closestIndex];
-      scene.remove(blockToRemove);
-      buildingBlocks.splice(closestIndex, 1);
-      const platformIndex = platforms.indexOf(blockToRemove);
-      if (platformIndex !== -1) {
-        platforms.splice(platformIndex, 1);
-      }
-      console.log(`Removed block at position: ${blockToRemove.position.x}, ${blockToRemove.position.y}, ${blockToRemove.position.z}`);
-    }
-  }
-  function setupBuilderUI() {
-    const container = document.getElementById("game-container");
-    if (!container) return;
-    const existingUI = document.getElementById("builder-ui");
-    if (existingUI) {
-      existingUI.remove();
-    }
-    const builderUI = document.createElement("div");
-    builderUI.id = "builder-ui";
-    builderUI.style.position = "absolute";
-    builderUI.style.top = "80px";
-    builderUI.style.left = "10px";
-    builderUI.style.display = "flex";
-    builderUI.style.flexDirection = "column";
-    builderUI.style.gap = "10px";
-    builderUI.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
-    builderUI.style.color = "white";
-    builderUI.style.padding = "15px";
-    builderUI.style.borderRadius = "8px";
-    builderUI.style.zIndex = "100";
-    builderUI.style.maxWidth = "250px";
-    const title = document.createElement("h2");
-    title.textContent = "Course Builder";
-    title.style.margin = "0 0 10px 0";
-    title.style.textAlign = "center";
-    builderUI.appendChild(title);
-    const blockTypeLabel = document.createElement("div");
-    blockTypeLabel.textContent = "Block Type:";
-    blockTypeLabel.style.fontWeight = "bold";
-    builderUI.appendChild(blockTypeLabel);
-    const blockTypeSelector = document.createElement("div");
-    blockTypeSelector.style.display = "flex";
-    blockTypeSelector.style.gap = "5px";
-    blockTypeSelector.style.marginBottom = "10px";
-    const createButton = (text, type, color) => {
-      const button = document.createElement("button");
-      button.textContent = text;
-      button.className = "block-button";
-      button.style.padding = "8px";
-      button.style.backgroundColor = type === selectedBlockType ? "#4CAF50" : "#f1f1f1";
-      button.style.border = "none";
-      button.style.borderRadius = "4px";
-      button.style.cursor = "pointer";
-      button.style.color = type === selectedBlockType ? "white" : "black";
-      button.style.flex = "1";
-      const colorIndicator = document.createElement("div");
-      colorIndicator.style.width = "10px";
-      colorIndicator.style.height = "10px";
-      colorIndicator.style.backgroundColor = color;
-      colorIndicator.style.display = "inline-block";
-      colorIndicator.style.marginRight = "5px";
-      colorIndicator.style.borderRadius = "2px";
-      button.prepend(colorIndicator);
-      button.addEventListener("click", () => {
-        selectedBlockType = type;
-        createPlacementPreview();
-        currentBuilderTool = "build";
-        updateToolbarSelection();
-        Array.from(blockTypeSelector.children).forEach((child) => {
-          child.style.backgroundColor = "#f1f1f1";
-          child.style.color = "black";
-        });
-        button.style.backgroundColor = "#4CAF50";
-        button.style.color = "white";
-        saveBuilderState();
-      });
-      return button;
-    };
-    blockTypeSelector.appendChild(createButton("Platform", "platform", "#cccccc"));
-    blockTypeSelector.appendChild(createButton("Start", "start", "#00ff00"));
-    blockTypeSelector.appendChild(createButton("Finish", "finish", "#0000ff"));
-    builderUI.appendChild(blockTypeSelector);
-    const saveButton = document.createElement("button");
-    saveButton.textContent = "Save Course";
-    saveButton.className = "save-button";
-    saveButton.style.padding = "10px";
-    saveButton.style.backgroundColor = "#2196F3";
-    saveButton.style.marginBottom = "10px";
-    saveButton.addEventListener("click", saveCourse);
-    builderUI.appendChild(saveButton);
-    const exitButton = document.createElement("button");
-    exitButton.textContent = "Enter Player Mode (B)";
-    exitButton.style.padding = "8px";
-    exitButton.style.backgroundColor = "#4CAF50";
-    exitButton.style.color = "white";
-    exitButton.style.border = "none";
-    exitButton.style.borderRadius = "4px";
-    exitButton.style.cursor = "pointer";
-    exitButton.style.marginBottom = "10px";
-    exitButton.addEventListener("click", exitBuilderMode);
-    builderUI.appendChild(exitButton);
-    const instructions = document.createElement("div");
-    instructions.className = "control-instructions";
-    instructions.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
-    instructions.style.padding = "10px";
-    instructions.style.borderRadius = "4px";
-    instructions.style.maxWidth = "220px";
-    instructions.innerHTML = `
-    <h3 style="margin: 0 0 5px 0">Builder Controls:</h3>
-    <p style="margin: 2px 0">WASD - Move horizontally</p>
-    <p style="margin: 2px 0">Q/E - Move up/down</p>
-    <p style="margin: 2px 0">Arrow Left/Right - Rotate camera</p>
-    <p style="margin: 2px 0">Right-click + drag - Look around</p>
-    <p style="margin: 2px 0">Left Click - Place block</p>
-    <p style="margin: 2px 0">Use toolbar for tools</p>
-    <p style="margin: 2px 0; color: #ffeb3b">Need start and finish blocks!</p>
-  `;
-    builderUI.appendChild(instructions);
-    const counterContainer = document.createElement("div");
-    counterContainer.id = "block-counter";
-    counterContainer.style.marginTop = "10px";
-    counterContainer.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
-    counterContainer.style.padding = "5px";
-    counterContainer.style.borderRadius = "4px";
-    counterContainer.innerHTML = `
-    <p style="margin: 0">Blocks placed: ${buildingBlocks.length}</p>
-    <p style="margin: 0">Start blocks: ${buildingBlocks.filter((b) => b.userData.type === "start").length}</p>
-    <p style="margin: 0">Finish blocks: ${buildingBlocks.filter((b) => b.userData.type === "finish").length}</p>
-  `;
-    builderUI.appendChild(counterContainer);
-    container.appendChild(builderUI);
-    setInterval(() => {
-      const counter = document.getElementById("block-counter");
-      if (counter && builderMode) {
-        counter.innerHTML = `
-        <p style="margin: 0">Blocks placed: ${buildingBlocks.length}</p>
-        <p style="margin: 0">Start blocks: ${buildingBlocks.filter((b) => b.userData.type === "start").length}</p>
-        <p style="margin: 0">Finish blocks: ${buildingBlocks.filter((b) => b.userData.type === "finish").length}</p>
-      `;
-      }
-    }, 1e3);
-    if (isMobile) {
-      setupMobileBuilderControls();
+        break;
+      case "s":
+        if (!buildControls2.backward) {
+          buildControls2.backward = true;
+          controlChanged = true;
+        }
+        break;
+      case "a":
+        if (!buildControls2.left) {
+          buildControls2.left = true;
+          controlChanged = true;
+        }
+        break;
+      case "d":
+        if (!buildControls2.right) {
+          buildControls2.right = true;
+          controlChanged = true;
+        }
+        break;
+      case "q":
+        if (!buildControls2.up) {
+          buildControls2.up = true;
+          controlChanged = true;
+        }
+        break;
+      case "e":
+        if (!buildControls2.down) {
+          buildControls2.down = true;
+          controlChanged = true;
+        }
+        break;
+      case "arrowleft":
+        if (!buildControls2.rotateLeft) {
+          buildControls2.rotateLeft = true;
+          controlChanged = true;
+        }
+        break;
+      case "arrowright":
+        if (!buildControls2.rotateRight) {
+          buildControls2.rotateRight = true;
+          controlChanged = true;
+        }
+        break;
     }
   }
-  function setupMobileBuilderControls() {
-    const container = document.getElementById("game-container");
-    if (!container) return;
-    const movementPad = document.createElement("div");
-    movementPad.id = "movement-pad";
-    movementPad.style.position = "absolute";
-    movementPad.style.bottom = "100px";
-    movementPad.style.left = "50px";
-    movementPad.style.width = "150px";
-    movementPad.style.height = "150px";
-    movementPad.style.display = "grid";
-    movementPad.style.gridTemplateColumns = "1fr 1fr 1fr";
-    movementPad.style.gridTemplateRows = "1fr 1fr 1fr";
+  function handleKeyUp(event, keyState2, buildControls2, builderMode2) {
+    const storedMode = localStorage.getItem("lastMode");
+    const isInBuilderMode = builderMode2 || storedMode === "builder";
+    if (getOverlayActive()) return;
+    if (!isInBuilderMode) {
+      switch (event.key.toLowerCase()) {
+        case "w":
+          keyState2.forward = false;
+          break;
+        case "s":
+          keyState2.backward = false;
+          break;
+        case "a":
+          keyState2.rotateLeft = false;
+          break;
+        case "d":
+          keyState2.rotateRight = false;
+          break;
+        case " ":
+          keyState2.jump = false;
+          break;
+      }
+      return;
+    }
+    event.preventDefault();
+    const key = event.key.toLowerCase();
+    let controlChanged = false;
+    switch (key) {
+      case "w":
+        if (buildControls2.forward) {
+          buildControls2.forward = false;
+          controlChanged = true;
+        }
+        break;
+      case "s":
+        if (buildControls2.backward) {
+          buildControls2.backward = false;
+          controlChanged = true;
+        }
+        break;
+      case "a":
+        if (buildControls2.left) {
+          buildControls2.left = false;
+          controlChanged = true;
+        }
+        break;
+      case "d":
+        if (buildControls2.right) {
+          buildControls2.right = false;
+          controlChanged = true;
+        }
+        break;
+      case "q":
+        if (buildControls2.up) {
+          buildControls2.up = false;
+          controlChanged = true;
+        }
+        break;
+      case "e":
+        if (buildControls2.down) {
+          buildControls2.down = false;
+          controlChanged = true;
+        }
+        break;
+      case "arrowleft":
+        if (buildControls2.rotateLeft) {
+          buildControls2.rotateLeft = false;
+          controlChanged = true;
+        }
+        break;
+      case "arrowright":
+        if (buildControls2.rotateRight) {
+          buildControls2.rotateRight = false;
+          controlChanged = true;
+        }
+        break;
+    }
+  }
+  function handleParentMessage(event, gameStarted2, builderMode2) {
+    if (event.data.type === "startGame") {
+      gameStarted2 = true;
+      builderMode2 = false;
+      console.log("Game started");
+      sendMessageToParent("gameStarted");
+    } else if (event.data.type === "startBuilder") {
+      const template = event.data.data?.template || "medium";
+      localStorage.setItem("builderTemplate", template);
+      console.log("Builder mode started with template:", template);
+      sendMessageToParent("builderStarted");
+    }
+  }
+  function setupBuilderMouseHandlers(container, camera2, placementPreviewFn, placeBlockFn, removeBlockFn) {
+    let isRightMouseDown = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+    let dragDistance = 0;
+    camera2.rotation.order = "YXZ";
+    container.addEventListener("click", (event) => {
+      if (event.button === 0 && !isRightMouseDown) {
+        placeBlockFn();
+        removeBlockFn();
+      }
+    });
+    container.addEventListener("mousedown", (event) => {
+      if (event.button === 2) {
+        isRightMouseDown = true;
+        lastMouseX = event.clientX;
+        lastMouseY = event.clientY;
+        dragDistance = 0;
+        container.style.cursor = "grabbing";
+        event.preventDefault();
+      }
+    });
+    container.addEventListener("mousemove", (event) => {
+      placementPreviewFn();
+      if (!isRightMouseDown) return;
+      const deltaX = event.clientX - lastMouseX;
+      const deltaY = event.clientY - lastMouseY;
+      dragDistance += Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      const heightFactor = Math.max(0.5, Math.min(2, camera2.position.y / 10));
+      const sensitivity = 5e-3 * heightFactor;
+      camera2.rotation.y -= deltaX * sensitivity;
+      const newPitch = camera2.rotation.x - deltaY * sensitivity;
+      camera2.rotation.x = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, newPitch));
+      camera2.rotation.z = 0;
+      lastMouseX = event.clientX;
+      lastMouseY = event.clientY;
+      event.preventDefault();
+    });
+    container.addEventListener("mouseup", (event) => {
+      if (event.button === 2) {
+        isRightMouseDown = false;
+        if (container.style.cursor === "grabbing") {
+          container.style.cursor = "default";
+        }
+        event.preventDefault();
+      }
+    });
+    container.addEventListener("mouseleave", () => {
+      if (isRightMouseDown) {
+        isRightMouseDown = false;
+        container.style.cursor = "default";
+      }
+    });
+    container.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+    });
+  }
+  function resetAllControls(keyState2, buildControls2) {
+    buildControls2.forward = false;
+    buildControls2.backward = false;
+    buildControls2.left = false;
+    buildControls2.right = false;
+    buildControls2.up = false;
+    buildControls2.down = false;
+    buildControls2.rotateLeft = false;
+    buildControls2.rotateRight = false;
+    keyState2.forward = false;
+    keyState2.backward = false;
+    keyState2.left = false;
+    keyState2.right = false;
+    keyState2.jump = false;
+    keyState2.rotateLeft = false;
+    keyState2.rotateRight = false;
+  }
+
+  // src/components/MobileControls.ts
+  function createMobileControls(container, keyState2, touchJoystick2) {
+    const joystickElement = createElement(
+      "div",
+      { id: "joystick" },
+      {
+        position: "absolute",
+        left: "100px",
+        bottom: "100px",
+        width: "100px",
+        height: "100px",
+        borderRadius: "50%",
+        backgroundColor: "rgba(255, 255, 255, 0.3)",
+        border: "2px solid white",
+        touchAction: "none"
+      }
+    );
+    const knobElement = createElement(
+      "div",
+      { id: "joystick-knob" },
+      {
+        position: "absolute",
+        left: "35px",
+        top: "35px",
+        width: "30px",
+        height: "30px",
+        borderRadius: "50%",
+        backgroundColor: "rgba(255, 255, 255, 0.7)"
+      }
+    );
+    joystickElement.appendChild(knobElement);
+    const jumpButton = createElement(
+      "div",
+      { id: "jump-button" },
+      {
+        position: "absolute",
+        right: "100px",
+        bottom: "100px",
+        width: "80px",
+        height: "80px",
+        borderRadius: "50%",
+        backgroundColor: "rgba(255, 80, 80, 0.7)",
+        border: "2px solid white",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        color: "white",
+        fontWeight: "bold",
+        fontSize: "18px",
+        touchAction: "none"
+      },
+      "JUMP"
+    );
+    jumpButton.addEventListener("touchstart", () => {
+      keyState2.jump = true;
+    });
+    jumpButton.addEventListener("touchend", () => {
+      keyState2.jump = false;
+    });
+    container.appendChild(joystickElement);
+    container.appendChild(jumpButton);
+  }
+  function setupMobileTouchHandlers(container, keyState2, touchJoystick2, joystickPosition2) {
+    container.addEventListener("touchstart", (event) => handleTouchStart(event, touchJoystick2));
+    container.addEventListener("touchmove", (event) => handleTouchMove(event, touchJoystick2, joystickPosition2));
+    container.addEventListener("touchend", () => handleTouchEnd(touchJoystick2, joystickPosition2, keyState2));
+  }
+  function handleTouchStart(event, touchJoystick2) {
+    const touch = event.touches[0];
+    const joystick = document.getElementById("joystick");
+    if (joystick) {
+      const joystickRect = joystick.getBoundingClientRect();
+      if (touch.clientX >= joystickRect.left && touch.clientX <= joystickRect.right && touch.clientY >= joystickRect.top && touch.clientY <= joystickRect.bottom) {
+        touchJoystick2.active = true;
+        touchJoystick2.startX = joystickRect.left + joystickRect.width / 2;
+        touchJoystick2.startY = joystickRect.top + joystickRect.height / 2;
+      }
+    }
+  }
+  function handleTouchMove(event, touchJoystick2, joystickPosition2) {
+    if (touchJoystick2.active) {
+      event.preventDefault();
+      const touch = event.touches[0];
+      updateJoystickPosition(touch.clientX, touch.clientY, touchJoystick2, joystickPosition2);
+    }
+  }
+  function handleTouchEnd(touchJoystick2, joystickPosition2, keyState2) {
+    if (touchJoystick2.active) {
+      touchJoystick2.active = false;
+      joystickPosition2.x = 0;
+      joystickPosition2.y = 0;
+      const knob = document.getElementById("joystick-knob");
+      if (knob) {
+        knob.style.left = "35px";
+        knob.style.top = "35px";
+      }
+      keyState2.forward = false;
+      keyState2.backward = false;
+      keyState2.left = false;
+      keyState2.right = false;
+    }
+  }
+  function updateJoystickPosition(touchX, touchY, touchJoystick2, joystickPosition2) {
+    const deltaX = touchX - touchJoystick2.startX;
+    const deltaY = touchY - touchJoystick2.startY;
+    const distance = Math.min(Math.sqrt(deltaX * deltaX + deltaY * deltaY), 50);
+    const angle = Math.atan2(deltaY, deltaX);
+    joystickPosition2.x = Math.cos(angle) * (distance / 50);
+    joystickPosition2.y = Math.sin(angle) * (distance / 50);
+    const knob = document.getElementById("joystick-knob");
+    if (knob) {
+      knob.style.left = 35 + joystickPosition2.x * 35 + "px";
+      knob.style.top = 35 + joystickPosition2.y * 35 + "px";
+    }
+  }
+  function updateKeyStatesFromJoystick(joystickPosition2, keyState2) {
+    keyState2.forward = joystickPosition2.y < -0.3;
+    keyState2.backward = joystickPosition2.y > 0.3;
+    keyState2.left = joystickPosition2.x < -0.3;
+    keyState2.right = joystickPosition2.x > 0.3;
+  }
+  function setupMobileBuilderControls(container, buildControls2) {
+    const movementPad = createElement(
+      "div",
+      { id: "movement-pad" },
+      {
+        position: "absolute",
+        bottom: "100px",
+        left: "50px",
+        width: "150px",
+        height: "150px",
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr 1fr",
+        gridTemplateRows: "1fr 1fr 1fr"
+      }
+    );
     const directions = [
       { text: "\u2196", x: -1, y: 0, z: -1 },
       { text: "\u2191", x: 0, y: 0, z: -1 },
@@ -24928,307 +25580,606 @@ void main() {
       { text: "\u2198", x: 1, y: 0, z: 1 }
     ];
     directions.forEach((dir) => {
-      const button = document.createElement("button");
-      button.textContent = dir.text;
-      button.style.backgroundColor = "rgba(255, 255, 255, 0.3)";
-      button.style.border = "1px solid white";
-      button.style.color = "white";
-      button.style.fontSize = "20px";
-      button.style.display = "flex";
-      button.style.justifyContent = "center";
-      button.style.alignItems = "center";
+      const button = createElement(
+        "button",
+        {},
+        {
+          backgroundColor: "rgba(255, 255, 255, 0.3)",
+          border: "1px solid white",
+          color: "white",
+          fontSize: "20px",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center"
+        },
+        dir.text
+      );
       button.addEventListener("touchstart", () => {
-        if (dir.x < 0) buildControls.left = true;
-        if (dir.x > 0) buildControls.right = true;
-        if (dir.z < 0) buildControls.forward = true;
-        if (dir.z > 0) buildControls.backward = true;
+        if (dir.x < 0) buildControls2.left = true;
+        if (dir.x > 0) buildControls2.right = true;
+        if (dir.z < 0) buildControls2.forward = true;
+        if (dir.z > 0) buildControls2.backward = true;
       });
       button.addEventListener("touchend", () => {
-        if (dir.x < 0) buildControls.left = false;
-        if (dir.x > 0) buildControls.right = false;
-        if (dir.z < 0) buildControls.forward = false;
-        if (dir.z > 0) buildControls.backward = false;
+        if (dir.x < 0) buildControls2.left = false;
+        if (dir.x > 0) buildControls2.right = false;
+        if (dir.z < 0) buildControls2.forward = false;
+        if (dir.z > 0) buildControls2.backward = false;
       });
       movementPad.appendChild(button);
     });
-    const upButton = document.createElement("button");
-    upButton.textContent = "Up";
-    upButton.style.position = "absolute";
-    upButton.style.right = "50px";
-    upButton.style.bottom = "150px";
-    upButton.style.width = "60px";
-    upButton.style.height = "60px";
-    upButton.style.backgroundColor = "rgba(255, 255, 255, 0.3)";
-    upButton.style.border = "1px solid white";
-    upButton.style.borderRadius = "50%";
-    upButton.style.color = "white";
+    container.appendChild(movementPad);
+    addVerticalControlButtons(container, buildControls2);
+    addRotationControlButtons(container, buildControls2);
+  }
+  function addVerticalControlButtons(container, buildControls2) {
+    const upButton = createElement(
+      "button",
+      {},
+      {
+        position: "absolute",
+        right: "50px",
+        bottom: "150px",
+        width: "60px",
+        height: "60px",
+        backgroundColor: "rgba(255, 255, 255, 0.3)",
+        border: "1px solid white",
+        borderRadius: "50%",
+        color: "white"
+      },
+      "Up"
+    );
     upButton.addEventListener("touchstart", () => {
-      buildControls.up = true;
+      buildControls2.up = true;
     });
     upButton.addEventListener("touchend", () => {
-      buildControls.up = false;
+      buildControls2.up = false;
     });
-    const downButton = document.createElement("button");
-    downButton.textContent = "Down";
-    downButton.style.position = "absolute";
-    downButton.style.right = "50px";
-    downButton.style.bottom = "80px";
-    downButton.style.width = "60px";
-    downButton.style.height = "60px";
-    downButton.style.backgroundColor = "rgba(255, 255, 255, 0.3)";
-    downButton.style.border = "1px solid white";
-    downButton.style.borderRadius = "50%";
-    downButton.style.color = "white";
+    const downButton = createElement(
+      "button",
+      {},
+      {
+        position: "absolute",
+        right: "50px",
+        bottom: "80px",
+        width: "60px",
+        height: "60px",
+        backgroundColor: "rgba(255, 255, 255, 0.3)",
+        border: "1px solid white",
+        borderRadius: "50%",
+        color: "white"
+      },
+      "Down"
+    );
     downButton.addEventListener("touchstart", () => {
-      buildControls.down = true;
+      buildControls2.down = true;
     });
     downButton.addEventListener("touchend", () => {
-      buildControls.down = false;
+      buildControls2.down = false;
     });
-    const rotateLeftButton = document.createElement("button");
-    rotateLeftButton.textContent = "\u27F2";
-    rotateLeftButton.style.position = "absolute";
-    rotateLeftButton.style.right = "120px";
-    rotateLeftButton.style.bottom = "115px";
-    rotateLeftButton.style.width = "60px";
-    rotateLeftButton.style.height = "60px";
-    rotateLeftButton.style.backgroundColor = "rgba(255, 255, 255, 0.3)";
-    rotateLeftButton.style.border = "1px solid white";
-    rotateLeftButton.style.borderRadius = "50%";
-    rotateLeftButton.style.color = "white";
-    rotateLeftButton.style.fontSize = "24px";
-    rotateLeftButton.addEventListener("touchstart", () => {
-      buildControls.rotateLeft = true;
-    });
-    rotateLeftButton.addEventListener("touchend", () => {
-      buildControls.rotateLeft = false;
-    });
-    const rotateRightButton = document.createElement("button");
-    rotateRightButton.textContent = "\u27F3";
-    rotateRightButton.style.position = "absolute";
-    rotateRightButton.style.right = "190px";
-    rotateRightButton.style.bottom = "115px";
-    rotateRightButton.style.width = "60px";
-    rotateRightButton.style.height = "60px";
-    rotateRightButton.style.backgroundColor = "rgba(255, 255, 255, 0.3)";
-    rotateRightButton.style.border = "1px solid white";
-    rotateRightButton.style.borderRadius = "50%";
-    rotateRightButton.style.color = "white";
-    rotateRightButton.style.fontSize = "24px";
-    rotateRightButton.addEventListener("touchstart", () => {
-      buildControls.rotateRight = true;
-    });
-    rotateRightButton.addEventListener("touchend", () => {
-      buildControls.rotateRight = false;
-    });
-    container.appendChild(movementPad);
     container.appendChild(upButton);
     container.appendChild(downButton);
+  }
+  function addRotationControlButtons(container, buildControls2) {
+    const rotateLeftButton = createElement(
+      "button",
+      {},
+      {
+        position: "absolute",
+        right: "120px",
+        bottom: "115px",
+        width: "60px",
+        height: "60px",
+        backgroundColor: "rgba(255, 255, 255, 0.3)",
+        border: "1px solid white",
+        borderRadius: "50%",
+        color: "white",
+        fontSize: "24px"
+      },
+      "\u27F2"
+    );
+    rotateLeftButton.addEventListener("touchstart", () => {
+      buildControls2.rotateLeft = true;
+    });
+    rotateLeftButton.addEventListener("touchend", () => {
+      buildControls2.rotateLeft = false;
+    });
+    const rotateRightButton = createElement(
+      "button",
+      {},
+      {
+        position: "absolute",
+        right: "190px",
+        bottom: "115px",
+        width: "60px",
+        height: "60px",
+        backgroundColor: "rgba(255, 255, 255, 0.3)",
+        border: "1px solid white",
+        borderRadius: "50%",
+        color: "white",
+        fontSize: "24px"
+      },
+      "\u27F3"
+    );
+    rotateRightButton.addEventListener("touchstart", () => {
+      buildControls2.rotateRight = true;
+    });
+    rotateRightButton.addEventListener("touchend", () => {
+      buildControls2.rotateRight = false;
+    });
     container.appendChild(rotateLeftButton);
     container.appendChild(rotateRightButton);
   }
-  function saveCourse() {
-    if (!builderMode) return;
-    const blocks = buildingBlocks.map((block) => ({
-      position: {
-        x: block.position.x,
-        y: block.position.y,
-        z: block.position.z
-      },
-      type: block.userData.type,
-      size: block.geometry.type.includes("Box") ? block.geometry.parameters : { width: 3, height: 1, depth: 3 }
-    }));
-    const startBlock = buildingBlocks.find((block) => block.userData.type === "start");
-    const finishBlock = buildingBlocks.find((block) => block.userData.type === "finish");
-    if (!startBlock || !finishBlock) {
-      console.error("Course must have start and finish blocks");
+
+  // src/app.ts
+  var scene;
+  var camera;
+  var renderer;
+  var player = null;
+  var mixer = null;
+  var actions = {
+    idle: null,
+    running: null,
+    jumping: null
+  };
+  var clock = new Clock();
+  var platforms = [];
+  var gameStarted = false;
+  var isMobile = false;
+  var joystickPosition = { x: 0, y: 0 };
+  var touchJoystick = { active: false, startX: 0, startY: 0 };
+  var builderMode = false;
+  var buildingBlocks = [];
+  var selectedBlockType = "platform";
+  var courseTemplate = "medium";
+  var currentBuilderTool = "build";
+  var buildControls = {
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+    up: false,
+    down: false,
+    rotateLeft: false,
+    rotateRight: false
+  };
+  var placementPreview = null;
+  var isPlacingBlock = false;
+  var cameraRotationAngle = 0;
+  var playerState = resetPlayerState();
+  var keyState = {
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+    jump: false,
+    rotateLeft: false,
+    rotateRight: false
+  };
+  var saveStateTimer = 0;
+  var SAVE_STATE_INTERVAL = 10;
+  function init() {
+    console.log("Initializing Three.js scene...");
+    const lastMode = localStorage.getItem(STORAGE_KEYS.LAST_MODE);
+    console.log("Last mode from localStorage:", lastMode);
+    isMobile = isMobileDevice();
+    scene = new Scene();
+    scene.background = new Color(8900331);
+    scene.fog = new Fog(8900331, 30, 100);
+    camera = new PerspectiveCamera(
+      CAMERA_SETTINGS.FOV,
+      window.innerWidth / window.innerHeight,
+      CAMERA_SETTINGS.NEAR,
+      CAMERA_SETTINGS.FAR
+    );
+    camera.position.copy(CAMERA_SETTINGS.DEFAULT_POSITION);
+    renderer = new WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = PCFSoftShadowMap;
+    const container = document.getElementById("game-container");
+    if (container) {
+      container.appendChild(renderer.domElement);
+      console.log("Renderer appended to #game-container");
+      window.addEventListener("blur", () => showOverlay(() => resetAllControls(keyState, buildControls)));
+      container.addEventListener("mouseleave", () => showOverlay(() => resetAllControls(keyState, buildControls)));
+      showOverlay(() => resetAllControls(keyState, buildControls));
+    } else {
+      console.error("No #game-container found!");
       return;
     }
-    const courseData = {
-      template: courseTemplate,
-      blocks,
-      startPosition: {
-        x: startBlock.position.x,
-        y: startBlock.position.y + 1,
-        // Player spawns above the start block
-        z: startBlock.position.z
-      },
-      finishPosition: {
-        x: finishBlock.position.x,
-        y: finishBlock.position.y,
-        z: finishBlock.position.z
+    setupLighting(scene);
+    createGround(scene);
+    if (!window.location.search.includes("builder=true") && lastMode !== "builder") {
+      createCityEnvironment(scene);
+    }
+    loadPlayerCharacter(scene, (p, m, a) => {
+      player = p;
+      mixer = m;
+      actions = a;
+    });
+    setupEventListeners(
+      keyState,
+      buildControls,
+      builderMode,
+      gameStarted,
+      () => showOverlay(() => resetAllControls(keyState, buildControls)),
+      () => resetAllControls(keyState, buildControls),
+      toggleGameMode,
+      handleResize
+    );
+    if (isMobile) {
+      const gameContainer = document.getElementById("game-container");
+      if (gameContainer) {
+        createMobileControls(gameContainer, keyState, touchJoystick);
+        setupMobileTouchHandlers(gameContainer, keyState, touchJoystick, joystickPosition);
       }
-    };
-    window.parent.postMessage({
-      type: "courseCreated",
-      data: courseData
-    }, "*");
-    console.log("Course saved:", courseData);
-    exitBuilderMode();
+    }
+    animate();
+    sendMessageToParent("webViewReady");
+    console.log("Sent webViewReady message");
+    if (window.location.search.includes("builder=true") || lastMode === "builder") {
+      const template = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
+      console.log("Starting in builder mode with template:", template);
+      enterBuilderMode(template);
+    } else {
+      console.log("Starting in player mode");
+      gameStarted = true;
+    }
+  }
+  function animate() {
+    requestAnimationFrame(animate);
+    const deltaTime = Math.min(clock.getDelta(), 0.1);
+    saveStateTimer += deltaTime;
+    const storedMode = localStorage.getItem(STORAGE_KEYS.LAST_MODE);
+    const effectiveBuilderMode = builderMode || storedMode === "builder";
+    if (effectiveBuilderMode !== builderMode) {
+      console.log(`Fixing inconsistent builder mode: variable=${builderMode}, localStorage=${storedMode}, using=${effectiveBuilderMode}`);
+      if (builderMode === false && storedMode === "builder") {
+        console.warn("Severe state inconsistency detected; resetting localStorage");
+        resetBuilderLocalStorage();
+      }
+      builderMode = effectiveBuilderMode;
+    }
+    if (builderMode && saveStateTimer >= SAVE_STATE_INTERVAL) {
+      saveStateTimer = 0;
+      saveBuilderState(
+        builderMode,
+        courseTemplate,
+        camera,
+        currentBuilderTool,
+        selectedBlockType,
+        buildingBlocks
+      );
+    }
+    if (builderMode) {
+      updateBuilderCamera(camera, buildControls, deltaTime);
+      if (placementPreview) {
+        const allObjects = [];
+        buildingBlocks.forEach((block) => {
+          allObjects.push(block);
+        });
+        platforms.forEach((platform) => {
+          if (!buildingBlocks.includes(platform)) {
+            allObjects.push(platform);
+          }
+        });
+        const ground = scene.children.find((child) => child instanceof Mesh && child.name === "Ground");
+        if (ground && ground instanceof Mesh) {
+          allObjects.push(ground);
+        }
+        updatePlacementPreview(camera, placementPreview, allObjects);
+        placementPreview.visible = currentBuilderTool === "build";
+      }
+    } else if (gameStarted && player) {
+      updatePlayer(
+        deltaTime,
+        player,
+        playerState,
+        keyState,
+        platforms,
+        scene,
+        camera,
+        cameraRotationAngle,
+        () => updateCamera(camera, player, cameraRotationAngle)
+      );
+      if (keyState.rotateLeft) {
+        cameraRotationAngle += CAMERA_SETTINGS.ROTATION_SPEED * deltaTime;
+      }
+      if (keyState.rotateRight) {
+        cameraRotationAngle -= CAMERA_SETTINGS.ROTATION_SPEED * deltaTime;
+      }
+      if (mixer) {
+        mixer.update(deltaTime);
+      }
+      updatePlayerAnimation(mixer, actions, playerState, keyState);
+      if (isMobile) {
+        updateKeyStatesFromJoystick(joystickPosition, keyState);
+      }
+    }
+    renderer.render(scene, camera);
+  }
+  function handleResize() {
+    if (camera && renderer) {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+  }
+  function toggleGameMode() {
+    const previousMode = builderMode ? "builder" : "player";
+    console.log(`Toggling game mode. Previous mode: ${previousMode}`);
+    if (builderMode) {
+      console.log("Exiting builder mode...");
+      exitBuilderMode();
+    } else {
+      console.log("Entering builder mode...");
+      const lastTemplate = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
+      enterBuilderMode(lastTemplate);
+    }
+    const newMode = builderMode ? "builder" : "player";
+    if (previousMode === newMode) {
+      console.error("Mode did not toggle correctly! Forcing update...");
+      if (newMode === "player") {
+        builderMode = true;
+        exitBuilderMode();
+      } else {
+        builderMode = false;
+        enterBuilderMode();
+      }
+      console.log(`Forced mode change, now: ${builderMode ? "builder" : "player"}`);
+    }
+  }
+  function enterBuilderMode(templateSize = "medium") {
+    console.log("Entering builder mode with template:", templateSize);
+    builderMode = true;
+    gameStarted = false;
+    courseTemplate = templateSize;
+    localStorage.setItem(STORAGE_KEYS.LAST_MODE, "builder");
+    localStorage.setItem(STORAGE_KEYS.BUILDER_TEMPLATE, templateSize);
+    if (player) {
+      player.visible = false;
+    }
+    resetAllControls(keyState, buildControls);
+    clearEnvironment(scene);
+    createGround(scene);
+    console.log("STORAGE DEBUG - Clearing existing building blocks, current count:", buildingBlocks.length);
+    console.log("STORAGE DEBUG - Platforms array length before clearing:", platforms.length);
+    buildingBlocks = [];
+    platforms = [];
+    console.log("STORAGE DEBUG - Platforms array length after clearing:", platforms.length);
+    const savedState = loadBuilderState();
+    if (savedState && savedState.blocks && savedState.blocks.length > 0) {
+      console.log("STORAGE DEBUG - Loading previous builder state with", savedState.blocks.length, "blocks");
+      savedState.blocks.forEach((blockData, index) => {
+        console.log(`STORAGE DEBUG - Loading block ${index} of type: ${blockData.type} at position:`, blockData.position);
+        let geometry, material;
+        switch (blockData.type) {
+          case "start":
+            geometry = new BoxGeometry(
+              BLOCK_TYPES.START.size.width,
+              BLOCK_TYPES.START.size.height,
+              BLOCK_TYPES.START.size.depth
+            );
+            material = new MeshStandardMaterial({
+              color: BLOCK_TYPES.START.color,
+              roughness: 0.7
+            });
+            break;
+          case "finish":
+            geometry = new BoxGeometry(
+              BLOCK_TYPES.FINISH.size.width,
+              BLOCK_TYPES.FINISH.size.height,
+              BLOCK_TYPES.FINISH.size.depth
+            );
+            material = new MeshStandardMaterial({
+              color: BLOCK_TYPES.FINISH.color,
+              roughness: 0.7
+            });
+            break;
+          case "platform":
+          default:
+            geometry = new BoxGeometry(
+              BLOCK_TYPES.PLATFORM.size.width,
+              BLOCK_TYPES.PLATFORM.size.height,
+              BLOCK_TYPES.PLATFORM.size.depth
+            );
+            material = new MeshStandardMaterial({
+              color: BLOCK_TYPES.PLATFORM.color,
+              roughness: 0.7
+            });
+        }
+        const block = new Mesh(geometry, material);
+        block.position.set(blockData.position.x, blockData.position.y, blockData.position.z);
+        block.userData = { type: blockData.type };
+        block.castShadow = true;
+        block.receiveShadow = true;
+        scene.add(block);
+        buildingBlocks.push(block);
+        if (!platforms.includes(block)) {
+          platforms.push(block);
+        }
+      });
+      if (savedState.cameraPosition) {
+        camera.position.set(
+          savedState.cameraPosition.x,
+          savedState.cameraPosition.y,
+          savedState.cameraPosition.z
+        );
+      } else {
+        camera.position.set(0, 10, 20);
+      }
+      if (savedState.cameraRotation) {
+        camera.rotation.set(
+          savedState.cameraRotation.x,
+          savedState.cameraRotation.y,
+          savedState.cameraRotation.z
+        );
+      } else {
+        camera.rotation.set(-0.3, 0, 0);
+      }
+      if (savedState.selectedTool) {
+        currentBuilderTool = savedState.selectedTool;
+      }
+      if (savedState.selectedBlockType) {
+        selectedBlockType = savedState.selectedBlockType;
+      }
+    } else {
+      console.log("No saved builder state found, creating new template");
+      buildingBlocks = setupCourseTemplate(scene, templateSize);
+      camera.position.set(0, 10, 20);
+      camera.rotation.set(-0.3, 0, 0);
+    }
+    camera.rotation.order = "YXZ";
+    const container = document.getElementById("game-container");
+    if (container) {
+      createBuilderUI(
+        selectedBlockType,
+        buildingBlocks,
+        exitBuilderMode,
+        () => saveCourse(buildingBlocks, courseTemplate),
+        (blockType) => {
+          selectedBlockType = blockType;
+          if (placementPreview) {
+            scene.remove(placementPreview);
+          }
+          placementPreview = createPlacementPreview(scene, selectedBlockType);
+          currentBuilderTool = "build";
+          updateToolbarSelection(currentBuilderTool);
+          saveBuilderState(
+            builderMode,
+            courseTemplate,
+            camera,
+            currentBuilderTool,
+            selectedBlockType,
+            buildingBlocks
+          );
+        }
+      );
+      createBuilderToolbar(
+        currentBuilderTool,
+        (tool) => {
+          currentBuilderTool = tool;
+          updateToolbarSelection(currentBuilderTool);
+          if (placementPreview) {
+            placementPreview.visible = tool === "build";
+          }
+          saveBuilderState(
+            builderMode,
+            courseTemplate,
+            camera,
+            currentBuilderTool,
+            selectedBlockType,
+            buildingBlocks
+          );
+        }
+      );
+      createBuilderDebugUI(buildControls);
+      setupBuilderMouseHandlers(
+        container,
+        camera,
+        () => {
+          if (placementPreview) {
+            const allObjects = [];
+            buildingBlocks.forEach((block) => {
+              allObjects.push(block);
+            });
+            platforms.forEach((platform) => {
+              if (!buildingBlocks.includes(platform)) {
+                allObjects.push(platform);
+              }
+            });
+            const ground = scene.children.find((child) => child instanceof Mesh && child.name === "Ground");
+            if (ground && ground instanceof Mesh) {
+              allObjects.push(ground);
+            }
+            updatePlacementPreview(camera, placementPreview, allObjects);
+            placementPreview.visible = currentBuilderTool === "build";
+          }
+        },
+        () => {
+          if (currentBuilderTool === "build" && !isPlacingBlock) {
+            console.log("BLOCK COUNTER DEBUG - Before placing block:", buildingBlocks.length);
+            isPlacingBlock = true;
+            if (!placementPreview) {
+              console.error("Placement preview is null when trying to place block");
+              isPlacingBlock = false;
+              return;
+            }
+            if (!placementPreview.visible) {
+              placementPreview.visible = true;
+            }
+            placeBlock(scene, placementPreview, selectedBlockType, buildingBlocks, platforms);
+            console.log("BLOCK COUNTER DEBUG - After placing block:", buildingBlocks.length);
+            console.log("BLOCK COUNTER DEBUG - Platforms array length:", platforms.length);
+            isPlacingBlock = false;
+          } else {
+          }
+        },
+        () => {
+          if (currentBuilderTool === "remove" && !isPlacingBlock) {
+            isPlacingBlock = true;
+            removeBlock(scene, placementPreview, buildingBlocks, platforms);
+            isPlacingBlock = false;
+          } else {
+          }
+        }
+      );
+      if (isMobile) {
+        setupMobileBuilderControls(container, buildControls);
+      }
+    }
+    if (placementPreview) {
+      scene.remove(placementPreview);
+    }
+    placementPreview = createPlacementPreview(scene, selectedBlockType);
+    saveBuilderState(
+      builderMode,
+      courseTemplate,
+      camera,
+      currentBuilderTool,
+      selectedBlockType,
+      buildingBlocks
+    );
+    console.log("Builder mode entered successfully");
+    showNotification("Builder Mode Activated", 3e3);
   }
   function exitBuilderMode() {
     console.log("Exiting builder mode");
+    saveBuilderState(
+      true,
+      // Still true at this point
+      courseTemplate,
+      camera,
+      currentBuilderTool,
+      selectedBlockType,
+      buildingBlocks
+    );
     builderMode = false;
     gameStarted = true;
-    const builderUI = document.getElementById("builder-ui");
-    if (builderUI) {
-      builderUI.remove();
-    }
-    const builderToolbar = document.getElementById("builder-toolbar");
-    if (builderToolbar) {
-      builderToolbar.remove();
-    }
+    localStorage.setItem(STORAGE_KEYS.LAST_MODE, "player");
+    removeElement("builder-ui");
+    removeElement("builder-toolbar");
+    removeElement("builder-debug");
+    removeElement("movement-pad");
     if (placementPreview) {
       scene.remove(placementPreview);
       placementPreview = null;
     }
-    resetAllControls();
-    playerState = {
-      position: new Vector3(0, 1, 0),
-      velocity: new Vector3(0, 0, 0),
-      rotation: new Euler(0, 0, 0),
-      onGround: true,
-      jumping: false,
-      speed: 5,
-      jumpPower: 15,
-      gravity: 20,
-      fallGravity: 35,
-      // Higher gravity when falling
-      currentAnimation: "idle"
-    };
+    resetAllControls(keyState, buildControls);
+    playerState = resetPlayerState();
     const gameContainer = document.getElementById("game-container");
     if (gameContainer) {
       gameContainer.style.cursor = "default";
-    }
-    const debugUI = document.getElementById("builder-debug");
-    if (debugUI) {
-      debugUI.remove();
     }
     if (player) {
       player.visible = true;
       player.position.set(0, 1, 0);
     }
-    camera.position.set(0, 5, 10);
-    camera.rotation.set(-0.3, 0, 0);
-    localStorage.setItem("lastMode", "player");
+    camera.position.copy(CAMERA_SETTINGS.DEFAULT_POSITION);
+    camera.rotation.copy(CAMERA_SETTINGS.DEFAULT_ROTATION);
     console.log("Builder mode exited successfully, now in player mode");
-  }
-  function saveBuilderState() {
-    if (!builderMode) return;
-    const state = {
-      isBuilderMode: builderMode,
-      template: courseTemplate,
-      cameraPosition: {
-        x: camera.position.x,
-        y: camera.position.y,
-        z: camera.position.z
-      },
-      cameraRotation: {
-        x: camera.rotation.x,
-        y: camera.rotation.y,
-        z: camera.rotation.z
-      },
-      selectedTool: currentBuilderTool,
-      selectedBlockType
-    };
-    localStorage.setItem("builderState", JSON.stringify(state));
-    localStorage.setItem("builderTemplate", courseTemplate);
-  }
-  function createBuilderDebugUI() {
-    const container = document.getElementById("game-container");
-    if (!container) return;
-    const debugUI = document.createElement("div");
-    debugUI.id = "builder-debug";
-    debugUI.style.position = "absolute";
-    debugUI.style.top = "10px";
-    debugUI.style.right = "10px";
-    debugUI.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
-    debugUI.style.color = "white";
-    debugUI.style.padding = "10px";
-    debugUI.style.borderRadius = "5px";
-    debugUI.style.fontFamily = "monospace";
-    debugUI.style.zIndex = "1000";
-    debugUI.style.maxWidth = "180px";
-    container.appendChild(debugUI);
-    setInterval(() => {
-      if (!builderMode) {
-        debugUI.remove();
-        return;
-      }
-      debugUI.innerHTML = `
-      <div style="font-weight:bold;">Builder Controls:</div>
-      <div>W (Forward): ${buildControls.forward}</div>
-      <div>S (Back): ${buildControls.backward}</div>
-      <div>A (Left): ${buildControls.left}</div>
-      <div>D (Right): ${buildControls.right}</div>
-      <div>Q (Up): ${buildControls.up}</div>
-      <div>E (Down): ${buildControls.down}</div>
-      <div>\u2190 (Rotate L): ${buildControls.rotateLeft}</div>
-      <div>\u2192 (Rotate R): ${buildControls.rotateRight}</div>
-      <div style="margin-top:5px;font-size:11px;">Pos: ${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}</div>
-    `;
-    }, 100);
-  }
-  function showOverlay() {
-    if (isOverlayActive) return;
-    const container = document.getElementById("game-container");
-    if (!container) return;
-    resetAllControls();
-    const overlay = document.createElement("div");
-    overlay.id = "game-overlay";
-    overlay.style.position = "absolute";
-    overlay.style.top = "0";
-    overlay.style.left = "0";
-    overlay.style.width = "100%";
-    overlay.style.height = "100%";
-    overlay.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
-    overlay.style.display = "flex";
-    overlay.style.justifyContent = "center";
-    overlay.style.alignItems = "center";
-    overlay.style.zIndex = "9999";
-    overlay.style.cursor = "pointer";
-    const message = document.createElement("div");
-    message.textContent = "Click to play";
-    message.style.color = "white";
-    message.style.fontSize = "24px";
-    message.style.fontFamily = "Arial, sans-serif";
-    message.style.padding = "20px";
-    message.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
-    message.style.borderRadius = "10px";
-    message.style.border = "2px solid white";
-    overlay.appendChild(message);
-    container.appendChild(overlay);
-    isOverlayActive = true;
-    overlay.addEventListener("click", hideOverlay);
-  }
-  function hideOverlay() {
-    const overlay = document.getElementById("game-overlay");
-    if (overlay) {
-      overlay.remove();
-      isOverlayActive = false;
-    }
-  }
-  function resetAllControls() {
-    buildControls = {
-      forward: false,
-      backward: false,
-      left: false,
-      right: false,
-      up: false,
-      down: false,
-      rotateLeft: false,
-      rotateRight: false
-    };
-    keyState = {
-      forward: false,
-      backward: false,
-      left: false,
-      right: false,
-      jump: false,
-      rotateLeft: false,
-      rotateRight: false
-    };
-    isMouseDown = false;
+    showNotification("Player Mode Activated", 3e3);
   }
   console.log("app.js loaded");
   init();
