@@ -6358,7 +6358,7 @@ var THREE = (() => {
      * @param {Vector3} scale - The scale vector.
      * @return {Matrix4} A reference to this matrix.
      */
-    compose(position2, quaternion, scale) {
+    compose(position, quaternion, scale) {
       const te = this.elements;
       const x = quaternion._x, y = quaternion._y, z = quaternion._z, w = quaternion._w;
       const x2 = x + x, y2 = y + y, z2 = z + z;
@@ -6378,9 +6378,9 @@ var THREE = (() => {
       te[9] = (yz - wx) * sz;
       te[10] = (1 - (xx + yy)) * sz;
       te[11] = 0;
-      te[12] = position2.x;
-      te[13] = position2.y;
-      te[14] = position2.z;
+      te[12] = position.x;
+      te[13] = position.y;
+      te[14] = position.z;
       te[15] = 1;
       return this;
     }
@@ -6397,16 +6397,16 @@ var THREE = (() => {
      * @param {Vector3} scale - The scale vector.
      * @return {Matrix4} A reference to this matrix.
      */
-    decompose(position2, quaternion, scale) {
+    decompose(position, quaternion, scale) {
       const te = this.elements;
       let sx = _v1$5.set(te[0], te[1], te[2]).length();
       const sy = _v1$5.set(te[4], te[5], te[6]).length();
       const sz = _v1$5.set(te[8], te[9], te[10]).length();
       const det = this.determinant();
       if (det < 0) sx = -sx;
-      position2.x = te[12];
-      position2.y = te[13];
-      position2.z = te[14];
+      position.x = te[12];
+      position.y = te[13];
+      position.z = te[14];
       _m1$2.copy(this);
       const invSX = 1 / sx;
       const invSY = 1 / sy;
@@ -6922,7 +6922,7 @@ var THREE = (() => {
       this.parent = null;
       this.children = [];
       this.up = _Object3D.DEFAULT_UP.clone();
-      const position2 = new Vector3();
+      const position = new Vector3();
       const rotation = new Euler();
       const quaternion = new Quaternion();
       const scale = new Vector3(1, 1, 1);
@@ -6945,7 +6945,7 @@ var THREE = (() => {
         position: {
           configurable: true,
           enumerable: true,
-          value: position2
+          value: position
         },
         /**
          * Represents the object's local rotation as Euler angles, in radians.
@@ -9693,10 +9693,10 @@ var THREE = (() => {
       this.drawRange.count = count;
     }
     applyMatrix4(matrix) {
-      const position2 = this.attributes.position;
-      if (position2 !== void 0) {
-        position2.applyMatrix4(matrix);
-        position2.needsUpdate = true;
+      const position = this.attributes.position;
+      if (position !== void 0) {
+        position.applyMatrix4(matrix);
+        position.needsUpdate = true;
       }
       const normal = this.attributes.normal;
       if (normal !== void 0) {
@@ -9762,12 +9762,12 @@ var THREE = (() => {
     setFromPoints(points) {
       const positionAttribute = this.getAttribute("position");
       if (positionAttribute === void 0) {
-        const position2 = [];
+        const position = [];
         for (let i = 0, l = points.length; i < l; i++) {
           const point = points[i];
-          position2.push(point.x, point.y, point.z || 0);
+          position.push(point.x, point.y, point.z || 0);
         }
-        this.setAttribute("position", new Float32BufferAttribute(position2, 3));
+        this.setAttribute("position", new Float32BufferAttribute(position, 3));
       } else {
         const l = Math.min(points.length, positionAttribute.count);
         for (let i = 0; i < l; i++) {
@@ -9785,9 +9785,9 @@ var THREE = (() => {
       if (this.boundingBox === null) {
         this.boundingBox = new Box3();
       }
-      const position2 = this.attributes.position;
+      const position = this.attributes.position;
       const morphAttributesPosition = this.morphAttributes.position;
-      if (position2 && position2.isGLBufferAttribute) {
+      if (position && position.isGLBufferAttribute) {
         console.error("THREE.BufferGeometry.computeBoundingBox(): GLBufferAttribute requires a manual bounding box.", this);
         this.boundingBox.set(
           new Vector3(-Infinity, -Infinity, -Infinity),
@@ -9795,8 +9795,8 @@ var THREE = (() => {
         );
         return;
       }
-      if (position2 !== void 0) {
-        this.boundingBox.setFromBufferAttribute(position2);
+      if (position !== void 0) {
+        this.boundingBox.setFromBufferAttribute(position);
         if (morphAttributesPosition) {
           for (let i = 0, il = morphAttributesPosition.length; i < il; i++) {
             const morphAttribute = morphAttributesPosition[i];
@@ -9823,16 +9823,16 @@ var THREE = (() => {
       if (this.boundingSphere === null) {
         this.boundingSphere = new Sphere();
       }
-      const position2 = this.attributes.position;
+      const position = this.attributes.position;
       const morphAttributesPosition = this.morphAttributes.position;
-      if (position2 && position2.isGLBufferAttribute) {
+      if (position && position.isGLBufferAttribute) {
         console.error("THREE.BufferGeometry.computeBoundingSphere(): GLBufferAttribute requires a manual bounding sphere.", this);
         this.boundingSphere.set(new Vector3(), Infinity);
         return;
       }
-      if (position2) {
+      if (position) {
         const center = this.boundingSphere.center;
-        _box$2.setFromBufferAttribute(position2);
+        _box$2.setFromBufferAttribute(position);
         if (morphAttributesPosition) {
           for (let i = 0, il = morphAttributesPosition.length; i < il; i++) {
             const morphAttribute = morphAttributesPosition[i];
@@ -9850,8 +9850,8 @@ var THREE = (() => {
         }
         _box$2.getCenter(center);
         let maxRadiusSq = 0;
-        for (let i = 0, il = position2.count; i < il; i++) {
-          _vector$8.fromBufferAttribute(position2, i);
+        for (let i = 0, il = position.count; i < il; i++) {
+          _vector$8.fromBufferAttribute(position, i);
           maxRadiusSq = Math.max(maxRadiusSq, center.distanceToSquared(_vector$8));
         }
         if (morphAttributesPosition) {
@@ -9861,7 +9861,7 @@ var THREE = (() => {
             for (let j = 0, jl = morphAttribute.count; j < jl; j++) {
               _vector$8.fromBufferAttribute(morphAttribute, j);
               if (morphTargetsRelative) {
-                _offset.fromBufferAttribute(position2, j);
+                _offset.fromBufferAttribute(position, j);
                 _vector$8.add(_offset);
               }
               maxRadiusSq = Math.max(maxRadiusSq, center.distanceToSquared(_vector$8));
@@ -10258,10 +10258,10 @@ var THREE = (() => {
      */
     getVertexPosition(index, target) {
       const geometry = this.geometry;
-      const position2 = geometry.attributes.position;
+      const position = geometry.attributes.position;
       const morphPosition = geometry.morphAttributes.position;
       const morphTargetsRelative = geometry.morphTargetsRelative;
-      target.fromBufferAttribute(position2, index);
+      target.fromBufferAttribute(position, index);
       const morphInfluences = this.morphTargetInfluences;
       if (morphPosition && morphInfluences) {
         _morphA.set(0, 0, 0);
@@ -10311,7 +10311,7 @@ var THREE = (() => {
       const geometry = this.geometry;
       const material = this.material;
       const index = geometry.index;
-      const position2 = geometry.attributes.position;
+      const position = geometry.attributes.position;
       const uv = geometry.attributes.uv;
       const uv1 = geometry.attributes.uv1;
       const normal = geometry.attributes.normal;
@@ -10350,13 +10350,13 @@ var THREE = (() => {
             }
           }
         }
-      } else if (position2 !== void 0) {
+      } else if (position !== void 0) {
         if (Array.isArray(material)) {
           for (let i = 0, il = groups.length; i < il; i++) {
             const group = groups[i];
             const groupMaterial = material[group.materialIndex];
             const start = Math.max(group.start, drawRange.start);
-            const end = Math.min(position2.count, Math.min(group.start + group.count, drawRange.start + drawRange.count));
+            const end = Math.min(position.count, Math.min(group.start + group.count, drawRange.start + drawRange.count));
             for (let j = start, jl = end; j < jl; j += 3) {
               const a = j;
               const b = j + 1;
@@ -10371,7 +10371,7 @@ var THREE = (() => {
           }
         } else {
           const start = Math.max(0, drawRange.start);
-          const end = Math.min(position2.count, drawRange.start + drawRange.count);
+          const end = Math.min(position.count, drawRange.start + drawRange.count);
           for (let i = start, il = end; i < il; i += 3) {
             const a = i;
             const b = i + 1;
@@ -10387,13 +10387,13 @@ var THREE = (() => {
     }
   };
   function checkIntersection$1(object, material, raycaster, ray, pA, pB, pC, point) {
-    let intersect;
+    let intersect2;
     if (material.side === BackSide) {
-      intersect = ray.intersectTriangle(pC, pB, pA, true, point);
+      intersect2 = ray.intersectTriangle(pC, pB, pA, true, point);
     } else {
-      intersect = ray.intersectTriangle(pA, pB, pC, material.side === FrontSide, point);
+      intersect2 = ray.intersectTriangle(pA, pB, pC, material.side === FrontSide, point);
     }
-    if (intersect === null) return null;
+    if (intersect2 === null) return null;
     _intersectionPointWorld.copy(point);
     _intersectionPointWorld.applyMatrix4(object.matrixWorld);
     const distance = raycaster.ray.origin.distanceTo(_intersectionPointWorld);
@@ -11397,6 +11397,45 @@ var THREE = (() => {
       return hand.joints[inputjoint.jointName];
     }
   };
+  var Fog = class _Fog {
+    /**
+     * Constructs a new fog.
+     *
+     * @param {number|Color} color - The fog's color.
+     * @param {number} [near=1] - The minimum distance to start applying fog.
+     * @param {number} [far=1000] - The maximum distance at which fog stops being calculated and applied.
+     */
+    constructor(color, near = 1, far = 1e3) {
+      this.isFog = true;
+      this.name = "";
+      this.color = new Color(color);
+      this.near = near;
+      this.far = far;
+    }
+    /**
+     * Returns a new fog with copied values from this instance.
+     *
+     * @return {Fog} A clone of this instance.
+     */
+    clone() {
+      return new _Fog(this.color, this.near, this.far);
+    }
+    /**
+     * Serializes the fog into JSON.
+     *
+     * @param {?(Object|string)} meta - An optional value holding meta information about the serialization.
+     * @return {Object} A JSON object representing the serialized fog
+     */
+    toJSON() {
+      return {
+        type: "Fog",
+        name: this.name,
+        color: this.color.getHex(),
+        near: this.near,
+        far: this.far
+      };
+    }
+  };
   var Scene = class extends Object3D {
     /**
      * Constructs a new scene.
@@ -11951,6 +11990,82 @@ var THREE = (() => {
      */
     static fromJSON(data) {
       return new _PlaneGeometry(data.width, data.height, data.widthSegments, data.heightSegments);
+    }
+  };
+  var MeshStandardMaterial = class extends Material {
+    constructor(parameters) {
+      super();
+      this.isMeshStandardMaterial = true;
+      this.type = "MeshStandardMaterial";
+      this.defines = { "STANDARD": "" };
+      this.color = new Color(16777215);
+      this.roughness = 1;
+      this.metalness = 0;
+      this.map = null;
+      this.lightMap = null;
+      this.lightMapIntensity = 1;
+      this.aoMap = null;
+      this.aoMapIntensity = 1;
+      this.emissive = new Color(0);
+      this.emissiveIntensity = 1;
+      this.emissiveMap = null;
+      this.bumpMap = null;
+      this.bumpScale = 1;
+      this.normalMap = null;
+      this.normalMapType = TangentSpaceNormalMap;
+      this.normalScale = new Vector2(1, 1);
+      this.displacementMap = null;
+      this.displacementScale = 1;
+      this.displacementBias = 0;
+      this.roughnessMap = null;
+      this.metalnessMap = null;
+      this.alphaMap = null;
+      this.envMap = null;
+      this.envMapRotation = new Euler();
+      this.envMapIntensity = 1;
+      this.wireframe = false;
+      this.wireframeLinewidth = 1;
+      this.wireframeLinecap = "round";
+      this.wireframeLinejoin = "round";
+      this.flatShading = false;
+      this.fog = true;
+      this.setValues(parameters);
+    }
+    copy(source) {
+      super.copy(source);
+      this.defines = { "STANDARD": "" };
+      this.color.copy(source.color);
+      this.roughness = source.roughness;
+      this.metalness = source.metalness;
+      this.map = source.map;
+      this.lightMap = source.lightMap;
+      this.lightMapIntensity = source.lightMapIntensity;
+      this.aoMap = source.aoMap;
+      this.aoMapIntensity = source.aoMapIntensity;
+      this.emissive.copy(source.emissive);
+      this.emissiveMap = source.emissiveMap;
+      this.emissiveIntensity = source.emissiveIntensity;
+      this.bumpMap = source.bumpMap;
+      this.bumpScale = source.bumpScale;
+      this.normalMap = source.normalMap;
+      this.normalMapType = source.normalMapType;
+      this.normalScale.copy(source.normalScale);
+      this.displacementMap = source.displacementMap;
+      this.displacementScale = source.displacementScale;
+      this.displacementBias = source.displacementBias;
+      this.roughnessMap = source.roughnessMap;
+      this.metalnessMap = source.metalnessMap;
+      this.alphaMap = source.alphaMap;
+      this.envMap = source.envMap;
+      this.envMapRotation.copy(source.envMapRotation);
+      this.envMapIntensity = source.envMapIntensity;
+      this.wireframe = source.wireframe;
+      this.wireframeLinewidth = source.wireframeLinewidth;
+      this.wireframeLinecap = source.wireframeLinecap;
+      this.wireframeLinejoin = source.wireframeLinejoin;
+      this.flatShading = source.flatShading;
+      this.fog = source.fog;
+      return this;
     }
   };
   var MeshDepthMaterial = class extends Material {
@@ -12725,6 +12840,196 @@ var THREE = (() => {
     }
   };
   Loader.DEFAULT_MATERIAL_NAME = "__DEFAULT";
+  var Light = class extends Object3D {
+    /**
+     * Constructs a new light.
+     *
+     * @param {(number|Color|string)} [color=0xffffff] - The light's color.
+     * @param {number} [intensity=1] - The light's strength/intensity.
+     */
+    constructor(color, intensity = 1) {
+      super();
+      this.isLight = true;
+      this.type = "Light";
+      this.color = new Color(color);
+      this.intensity = intensity;
+    }
+    /**
+     * Frees the GPU-related resources allocated by this instance. Call this
+     * method whenever this instance is no longer used in your app.
+     */
+    dispose() {
+    }
+    copy(source, recursive) {
+      super.copy(source, recursive);
+      this.color.copy(source.color);
+      this.intensity = source.intensity;
+      return this;
+    }
+    toJSON(meta) {
+      const data = super.toJSON(meta);
+      data.object.color = this.color.getHex();
+      data.object.intensity = this.intensity;
+      if (this.groundColor !== void 0) data.object.groundColor = this.groundColor.getHex();
+      if (this.distance !== void 0) data.object.distance = this.distance;
+      if (this.angle !== void 0) data.object.angle = this.angle;
+      if (this.decay !== void 0) data.object.decay = this.decay;
+      if (this.penumbra !== void 0) data.object.penumbra = this.penumbra;
+      if (this.shadow !== void 0) data.object.shadow = this.shadow.toJSON();
+      if (this.target !== void 0) data.object.target = this.target.uuid;
+      return data;
+    }
+  };
+  var _projScreenMatrix$1 = /* @__PURE__ */ new Matrix4();
+  var _lightPositionWorld$1 = /* @__PURE__ */ new Vector3();
+  var _lookTarget$1 = /* @__PURE__ */ new Vector3();
+  var LightShadow = class {
+    /**
+     * Constructs a new light shadow.
+     *
+     * @param {Camera} camera - The light's view of the world.
+     */
+    constructor(camera2) {
+      this.camera = camera2;
+      this.intensity = 1;
+      this.bias = 0;
+      this.normalBias = 0;
+      this.radius = 1;
+      this.blurSamples = 8;
+      this.mapSize = new Vector2(512, 512);
+      this.map = null;
+      this.mapPass = null;
+      this.matrix = new Matrix4();
+      this.autoUpdate = true;
+      this.needsUpdate = false;
+      this._frustum = new Frustum();
+      this._frameExtents = new Vector2(1, 1);
+      this._viewportCount = 1;
+      this._viewports = [
+        new Vector4(0, 0, 1, 1)
+      ];
+    }
+    /**
+     * Used internally by the renderer to get the number of viewports that need
+     * to be rendered for this shadow.
+     *
+     * @return {number} The viewport count.
+     */
+    getViewportCount() {
+      return this._viewportCount;
+    }
+    /**
+     * Gets the shadow cameras frustum. Used internally by the renderer to cull objects.
+     *
+     * @return {Frustum} The shadow camera frustum.
+     */
+    getFrustum() {
+      return this._frustum;
+    }
+    /**
+     * Update the matrices for the camera and shadow, used internally by the renderer.
+     *
+     * @param {Light} light - The light for which the shadow is being rendered.
+     */
+    updateMatrices(light) {
+      const shadowCamera = this.camera;
+      const shadowMatrix = this.matrix;
+      _lightPositionWorld$1.setFromMatrixPosition(light.matrixWorld);
+      shadowCamera.position.copy(_lightPositionWorld$1);
+      _lookTarget$1.setFromMatrixPosition(light.target.matrixWorld);
+      shadowCamera.lookAt(_lookTarget$1);
+      shadowCamera.updateMatrixWorld();
+      _projScreenMatrix$1.multiplyMatrices(shadowCamera.projectionMatrix, shadowCamera.matrixWorldInverse);
+      this._frustum.setFromProjectionMatrix(_projScreenMatrix$1);
+      shadowMatrix.set(
+        0.5,
+        0,
+        0,
+        0.5,
+        0,
+        0.5,
+        0,
+        0.5,
+        0,
+        0,
+        0.5,
+        0.5,
+        0,
+        0,
+        0,
+        1
+      );
+      shadowMatrix.multiply(_projScreenMatrix$1);
+    }
+    /**
+     * Returns a viewport definition for the given viewport index.
+     *
+     * @param {number} viewportIndex - The viewport index.
+     * @return {Vector4} The viewport.
+     */
+    getViewport(viewportIndex) {
+      return this._viewports[viewportIndex];
+    }
+    /**
+     * Returns the frame extends.
+     *
+     * @return {Vector2} The frame extends.
+     */
+    getFrameExtents() {
+      return this._frameExtents;
+    }
+    /**
+     * Frees the GPU-related resources allocated by this instance. Call this
+     * method whenever this instance is no longer used in your app.
+     */
+    dispose() {
+      if (this.map) {
+        this.map.dispose();
+      }
+      if (this.mapPass) {
+        this.mapPass.dispose();
+      }
+    }
+    /**
+     * Copies the values of the given light shadow instance to this instance.
+     *
+     * @param {LightShadow} source - The light shadow to copy.
+     * @return {LightShadow} A reference to this light shadow instance.
+     */
+    copy(source) {
+      this.camera = source.camera.clone();
+      this.intensity = source.intensity;
+      this.bias = source.bias;
+      this.radius = source.radius;
+      this.mapSize.copy(source.mapSize);
+      return this;
+    }
+    /**
+     * Returns a new light shadow instance with copied values from this instance.
+     *
+     * @return {LightShadow} A clone of this instance.
+     */
+    clone() {
+      return new this.constructor().copy(this);
+    }
+    /**
+     * Serializes the light shadow into JSON.
+     *
+     * @return {Object} A JSON object representing the serialized light shadow.
+     * @see {@link ObjectLoader#parse}
+     */
+    toJSON() {
+      const object = {};
+      if (this.intensity !== 1) object.intensity = this.intensity;
+      if (this.bias !== 0) object.bias = this.bias;
+      if (this.normalBias !== 0) object.normalBias = this.normalBias;
+      if (this.radius !== 1) object.radius = this.radius;
+      if (this.mapSize.x !== 512 || this.mapSize.y !== 512) object.mapSize = this.mapSize.toArray();
+      object.camera = this.camera.toJSON(false).object;
+      delete object.camera.matrix;
+      return object;
+    }
+  };
   var OrthographicCamera = class extends Camera {
     /**
      * Constructs a new orthographic camera.
@@ -12841,6 +13146,54 @@ var THREE = (() => {
       return data;
     }
   };
+  var DirectionalLightShadow = class extends LightShadow {
+    /**
+     * Constructs a new directional light shadow.
+     */
+    constructor() {
+      super(new OrthographicCamera(-5, 5, 5, -5, 0.5, 500));
+      this.isDirectionalLightShadow = true;
+    }
+  };
+  var DirectionalLight = class extends Light {
+    /**
+     * Constructs a new directional light.
+     *
+     * @param {(number|Color|string)} [color=0xffffff] - The light's color.
+     * @param {number} [intensity=1] - The light's strength/intensity.
+     */
+    constructor(color, intensity) {
+      super(color, intensity);
+      this.isDirectionalLight = true;
+      this.type = "DirectionalLight";
+      this.position.copy(Object3D.DEFAULT_UP);
+      this.updateMatrix();
+      this.target = new Object3D();
+      this.shadow = new DirectionalLightShadow();
+    }
+    dispose() {
+      this.shadow.dispose();
+    }
+    copy(source) {
+      super.copy(source);
+      this.target = source.target.clone();
+      this.shadow = source.shadow.clone();
+      return this;
+    }
+  };
+  var AmbientLight = class extends Light {
+    /**
+     * Constructs a new ambient light.
+     *
+     * @param {(number|Color|string)} [color=0xffffff] - The light's color.
+     * @param {number} [intensity=1] - The light's strength/intensity.
+     */
+    constructor(color, intensity) {
+      super(color, intensity);
+      this.isAmbientLight = true;
+      this.type = "AmbientLight";
+    }
+  };
   var ArrayCamera = class extends PerspectiveCamera {
     /**
      * Constructs a new array camera.
@@ -12854,6 +13207,47 @@ var THREE = (() => {
       this.index = 0;
     }
   };
+  var Clock = class {
+    constructor(autoStart = true) {
+      this.autoStart = autoStart;
+      this.startTime = 0;
+      this.oldTime = 0;
+      this.elapsedTime = 0;
+      this.running = false;
+    }
+    start() {
+      this.startTime = now();
+      this.oldTime = this.startTime;
+      this.elapsedTime = 0;
+      this.running = true;
+    }
+    stop() {
+      this.getElapsedTime();
+      this.running = false;
+      this.autoStart = false;
+    }
+    getElapsedTime() {
+      this.getDelta();
+      return this.elapsedTime;
+    }
+    getDelta() {
+      let diff = 0;
+      if (this.autoStart && !this.running) {
+        this.start();
+        return 0;
+      }
+      if (this.running) {
+        const newTime = now();
+        diff = (newTime - this.oldTime) / 1e3;
+        this.oldTime = newTime;
+        this.elapsedTime += diff;
+      }
+      return diff;
+    }
+  };
+  function now() {
+    return performance.now();
+  }
   var _RESERVED_CHARS_RE = "\\[\\]\\.:\\/";
   var _reservedRe = new RegExp("[" + _RESERVED_CHARS_RE + "]", "g");
   var _wordChar = "[^" + _RESERVED_CHARS_RE + "]";
@@ -13232,6 +13626,73 @@ var THREE = (() => {
     ]
   ];
   var _controlInterpolantsResultBuffer = new Float32Array(1);
+  var _matrix = /* @__PURE__ */ new Matrix4();
+  var Raycaster = class {
+    constructor(origin, direction, near = 0, far = Infinity) {
+      this.ray = new Ray(origin, direction);
+      this.near = near;
+      this.far = far;
+      this.camera = null;
+      this.layers = new Layers();
+      this.params = {
+        Mesh: {},
+        Line: { threshold: 1 },
+        LOD: {},
+        Points: { threshold: 1 },
+        Sprite: {}
+      };
+    }
+    set(origin, direction) {
+      this.ray.set(origin, direction);
+    }
+    setFromCamera(coords, camera2) {
+      if (camera2.isPerspectiveCamera) {
+        this.ray.origin.setFromMatrixPosition(camera2.matrixWorld);
+        this.ray.direction.set(coords.x, coords.y, 0.5).unproject(camera2).sub(this.ray.origin).normalize();
+        this.camera = camera2;
+      } else if (camera2.isOrthographicCamera) {
+        this.ray.origin.set(coords.x, coords.y, (camera2.near + camera2.far) / (camera2.near - camera2.far)).unproject(camera2);
+        this.ray.direction.set(0, 0, -1).transformDirection(camera2.matrixWorld);
+        this.camera = camera2;
+      } else {
+        console.error("THREE.Raycaster: Unsupported camera type: " + camera2.type);
+      }
+    }
+    setFromXRController(controller) {
+      _matrix.identity().extractRotation(controller.matrixWorld);
+      this.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+      this.ray.direction.set(0, 0, -1).applyMatrix4(_matrix);
+      return this;
+    }
+    intersectObject(object, recursive = true, intersects = []) {
+      intersect(object, this, intersects, recursive);
+      intersects.sort(ascSort);
+      return intersects;
+    }
+    intersectObjects(objects, recursive = true, intersects = []) {
+      for (let i = 0, l = objects.length; i < l; i++) {
+        intersect(objects[i], this, intersects, recursive);
+      }
+      intersects.sort(ascSort);
+      return intersects;
+    }
+  };
+  function ascSort(a, b) {
+    return a.distance - b.distance;
+  }
+  function intersect(object, raycaster, intersects, recursive) {
+    let propagate = true;
+    if (object.layers.test(raycaster.layers)) {
+      const result = object.raycast(raycaster, intersects);
+      if (result === false) propagate = false;
+    }
+    if (propagate === true && recursive === true) {
+      const children = object.children;
+      for (let i = 0, l = children.length; i < l; i++) {
+        intersect(children[i], raycaster, intersects, true);
+      }
+    }
+  }
   function getByteLength(width, height, format, type) {
     const typeByteLength = getTextureTypeByteLength(type);
     switch (format) {
@@ -15037,7 +15498,7 @@ var THREE = (() => {
     fromScene(scene2, sigma = 0, near = 0.1, far = 100, options = {}) {
       const {
         size = 256,
-        position: position2 = _origin
+        position = _origin
       } = options;
       _oldTarget = this._renderer.getRenderTarget();
       _oldActiveCubeFace = this._renderer.getActiveCubeFace();
@@ -15047,7 +15508,7 @@ var THREE = (() => {
       this._setSize(size);
       const cubeUVRenderTarget = this._allocateTargets();
       cubeUVRenderTarget.depthBuffer = true;
-      this._sceneToCubeUV(scene2, near, far, cubeUVRenderTarget, position2);
+      this._sceneToCubeUV(scene2, near, far, cubeUVRenderTarget, position);
       if (sigma > 0) {
         this._blur(cubeUVRenderTarget, 0, 0, sigma);
       }
@@ -15174,7 +15635,7 @@ var THREE = (() => {
       const tmpMesh = new Mesh(this._lodPlanes[0], material);
       this._renderer.compile(tmpMesh, _flatCamera);
     }
-    _sceneToCubeUV(scene2, near, far, cubeUVRenderTarget, position2) {
+    _sceneToCubeUV(scene2, near, far, cubeUVRenderTarget, position) {
       const fov2 = 90;
       const aspect2 = 1;
       const cubeCamera = new PerspectiveCamera(fov2, aspect2, near, far);
@@ -15209,16 +15670,16 @@ var THREE = (() => {
         const col = i % 3;
         if (col === 0) {
           cubeCamera.up.set(0, upSign[i], 0);
-          cubeCamera.position.set(position2.x, position2.y, position2.z);
-          cubeCamera.lookAt(position2.x + forwardSign[i], position2.y, position2.z);
+          cubeCamera.position.set(position.x, position.y, position.z);
+          cubeCamera.lookAt(position.x + forwardSign[i], position.y, position.z);
         } else if (col === 1) {
           cubeCamera.up.set(0, 0, upSign[i]);
-          cubeCamera.position.set(position2.x, position2.y, position2.z);
-          cubeCamera.lookAt(position2.x, position2.y + forwardSign[i], position2.z);
+          cubeCamera.position.set(position.x, position.y, position.z);
+          cubeCamera.lookAt(position.x, position.y + forwardSign[i], position.z);
         } else {
           cubeCamera.up.set(0, upSign[i], 0);
-          cubeCamera.position.set(position2.x, position2.y, position2.z);
-          cubeCamera.lookAt(position2.x, position2.y, position2.z + forwardSign[i]);
+          cubeCamera.position.set(position.x, position.y, position.z);
+          cubeCamera.lookAt(position.x, position.y, position.z + forwardSign[i]);
         }
         const size = this._cubeSize;
         _setViewport(cubeUVRenderTarget, col * size, i > 2 ? size : 0, size, size);
@@ -15378,7 +15839,7 @@ var THREE = (() => {
       const positionSize = 3;
       const uvSize = 2;
       const faceIndexSize = 1;
-      const position2 = new Float32Array(positionSize * vertices * cubeFaces);
+      const position = new Float32Array(positionSize * vertices * cubeFaces);
       const uv = new Float32Array(uvSize * vertices * cubeFaces);
       const faceIndex = new Float32Array(faceIndexSize * vertices * cubeFaces);
       for (let face = 0; face < cubeFaces; face++) {
@@ -15404,13 +15865,13 @@ var THREE = (() => {
           y + 1,
           0
         ];
-        position2.set(coordinates, positionSize * vertices * face);
+        position.set(coordinates, positionSize * vertices * face);
         uv.set(uv1, uvSize * vertices * face);
         const fill = [face, face, face, face, face, face];
         faceIndex.set(fill, faceIndexSize * vertices * face);
       }
       const planes = new BufferGeometry();
-      planes.setAttribute("position", new BufferAttribute(position2, positionSize));
+      planes.setAttribute("position", new BufferAttribute(position, positionSize));
       planes.setAttribute("uv", new BufferAttribute(uv, uvSize));
       planes.setAttribute("faceIndex", new BufferAttribute(faceIndex, faceIndexSize));
       lodPlanes.push(planes);
@@ -21107,7 +21568,7 @@ void main() {
           camera2.projectionMatrixInverse.copy(camera2.projectionMatrix).invert();
         }
       }
-      function updateCamera(camera2, parent) {
+      function updateCamera2(camera2, parent) {
         if (parent === null) {
           camera2.matrixWorld.copy(camera2.matrix);
         } else {
@@ -21138,9 +21599,9 @@ void main() {
         cameraXR.layers.mask = cameraL.layers.mask | cameraR.layers.mask;
         const parent = camera2.parent;
         const cameras2 = cameraXR.cameras;
-        updateCamera(cameraXR, parent);
+        updateCamera2(cameraXR, parent);
         for (let i = 0; i < cameras2.length; i++) {
-          updateCamera(cameras2[i], parent);
+          updateCamera2(cameras2[i], parent);
         }
         if (cameras2.length === 2) {
           setProjectionFromUnion(cameraXR, cameraL, cameraR);
@@ -22179,7 +22640,7 @@ void main() {
           rangeFactor = 2;
         }
         const drawRange = geometry.drawRange;
-        const position2 = geometry.attributes.position;
+        const position = geometry.attributes.position;
         let drawStart = drawRange.start * rangeFactor;
         let drawEnd = (drawRange.start + drawRange.count) * rangeFactor;
         if (group !== null) {
@@ -22189,9 +22650,9 @@ void main() {
         if (index !== null) {
           drawStart = Math.max(drawStart, 0);
           drawEnd = Math.min(drawEnd, index.count);
-        } else if (position2 !== void 0 && position2 !== null) {
+        } else if (position !== void 0 && position !== null) {
           drawStart = Math.max(drawStart, 0);
-          drawEnd = Math.min(drawEnd, position2.count);
+          drawEnd = Math.min(drawEnd, position.count);
         }
         const drawCount = drawEnd - drawStart;
         if (drawCount < 0 || drawCount === Infinity) return;
@@ -23090,17 +23551,17 @@ void main() {
           }
         }
       };
-      this.copyFramebufferToTexture = function(texture, position2 = null, level = 0) {
+      this.copyFramebufferToTexture = function(texture, position = null, level = 0) {
         if (texture.isTexture !== true) {
           warnOnce("WebGLRenderer: copyFramebufferToTexture function signature has changed.");
-          position2 = arguments[0] || null;
+          position = arguments[0] || null;
           texture = arguments[1];
         }
         const levelScale = Math.pow(2, -level);
         const width = Math.floor(texture.image.width * levelScale);
         const height = Math.floor(texture.image.height * levelScale);
-        const x = position2 !== null ? position2.x : 0;
-        const y = position2 !== null ? position2.y : 0;
+        const x = position !== null ? position.x : 0;
+        const y = position !== null ? position.y : 0;
         textures.setTexture2D(texture, 0);
         _gl.copyTexSubImage2D(_gl.TEXTURE_2D, level, 0, 0, x, y, width, height);
         state.unbindTexture();
@@ -23316,99 +23777,1342 @@ void main() {
   var scene;
   var camera;
   var renderer;
-  var cube;
-  var position = { x: 0, y: 0, z: 0 };
-  var speed = 0.1;
-  var isJumping = false;
+  var player = null;
+  var mixer = null;
+  var actions = {
+    idle: null,
+    running: null,
+    jumping: null
+  };
+  var clock = new Clock();
+  var platforms = [];
+  var gameStarted = false;
+  var isMobile = false;
+  var joystickPosition = { x: 0, y: 0 };
+  var touchJoystick = { active: false, startX: 0, startY: 0 };
+  var builderMode = false;
+  var buildingBlocks = [];
+  var selectedBlockType = "platform";
+  var courseTemplate = "medium";
+  var currentBuilderTool = "build";
+  var rightClickRotating = false;
+  var buildControls = {
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+    up: false,
+    down: false,
+    rotateLeft: false,
+    rotateRight: false
+  };
+  var buildCameraSpeed = 10;
+  var buildRotationSpeed = 2;
+  var placementPreview = null;
+  var playerState = {
+    position: new Vector3(0, 1, 0),
+    velocity: new Vector3(0, 0, 0),
+    rotation: new Euler(0, 0, 0),
+    onGround: true,
+    jumping: false,
+    speed: 5,
+    jumpPower: 10,
+    gravity: 20,
+    currentAnimation: "idle"
+  };
+  var keyState = {
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+    jump: false
+  };
   function init() {
     console.log("Initializing Three.js scene...");
+    isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     scene = new Scene();
-    scene.background = new Color(0);
+    scene.background = new Color(8900331);
+    scene.fog = new Fog(8900331, 30, 100);
     camera = new PerspectiveCamera(
       75,
       window.innerWidth / window.innerHeight,
       0.1,
       1e3
     );
-    renderer = new WebGLRenderer();
+    camera.position.set(0, 5, 10);
+    renderer = new WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = PCFSoftShadowMap;
     const container = document.getElementById("game-container");
     if (container) {
       container.appendChild(renderer.domElement);
       console.log("Renderer appended to #game-container");
     } else {
       console.error("No #game-container found!");
+      return;
     }
-    const geometry = new BoxGeometry(1, 1, 1);
-    const material = new MeshBasicMaterial({ color: 16711680 });
-    cube = new Mesh(geometry, material);
-    scene.add(cube);
-    console.log("Cube added to scene");
-    camera.position.z = 5;
-    camera.position.y = 5;
-    camera.lookAt(0, 0, 0);
-    window.addEventListener("keydown", (event) => {
+    setupLighting();
+    createGround();
+    createCityEnvironment();
+    loadPlayerCharacter();
+    setupEventListeners();
+    if (isMobile) {
+      createMobileControls();
+    }
+    animate();
+    window.parent.postMessage({ type: "webViewReady" }, "*");
+    console.log("Sent webViewReady message");
+    loadBuilderState();
+    if (!builderMode) {
+      const savedTemplate = localStorage.getItem("builderTemplate") || "medium";
+      enterBuilderMode(savedTemplate);
+    }
+  }
+  function setupLighting() {
+    const ambientLight = new AmbientLight(16777215, 0.5);
+    scene.add(ambientLight);
+    const directionalLight = new DirectionalLight(16777215, 0.8);
+    directionalLight.position.set(100, 100, 50);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    directionalLight.shadow.camera.near = 0.5;
+    directionalLight.shadow.camera.far = 500;
+    directionalLight.shadow.camera.left = -100;
+    directionalLight.shadow.camera.right = 100;
+    directionalLight.shadow.camera.top = 100;
+    directionalLight.shadow.camera.bottom = -100;
+    scene.add(directionalLight);
+  }
+  function createGround() {
+    const groundGeometry = new PlaneGeometry(100, 100);
+    const groundMaterial = new MeshStandardMaterial({
+      color: 3355443,
+      roughness: 0.8,
+      metalness: 0.2
+    });
+    const ground = new Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0;
+    ground.receiveShadow = true;
+    scene.add(ground);
+  }
+  function createCityEnvironment() {
+    for (let i = 0; i < 20; i++) {
+      const width = 5 + Math.random() * 10;
+      const height = 10 + Math.random() * 40;
+      const depth = 5 + Math.random() * 10;
+      const buildingGeometry = new BoxGeometry(width, height, depth);
+      const buildingMaterial = new MeshStandardMaterial({
+        color: new Color(0.3 + Math.random() * 0.5, 0.3 + Math.random() * 0.5, 0.3 + Math.random() * 0.5),
+        roughness: 0.7,
+        metalness: 0.2
+      });
+      const building = new Mesh(buildingGeometry, buildingMaterial);
+      building.position.set(
+        -50 + Math.random() * 100,
+        height / 2,
+        -50 + Math.random() * 100
+      );
+      if (building.position.distanceTo(new Vector3(0, 0, 0)) > 10) {
+        building.castShadow = true;
+        building.receiveShadow = true;
+        scene.add(building);
+      }
+    }
+    createParkourPlatforms();
+  }
+  function createParkourPlatforms() {
+    const platformPositions = [
+      { x: 5, y: 1, z: 5, type: "garbage" },
+      { x: 8, y: 2, z: 10, type: "garbage" },
+      { x: 12, y: 3, z: 15, type: "rooftop" },
+      { x: 15, y: 4, z: 12, type: "rooftop" },
+      { x: 18, y: 5, z: 8, type: "rooftop" },
+      { x: 20, y: 6, z: 4, type: "garbage" },
+      { x: 16, y: 3, z: 0, type: "garbage" },
+      { x: 10, y: 2, z: -5, type: "rooftop" },
+      { x: 5, y: 1, z: -10, type: "garbage" },
+      { x: -5, y: 1, z: -5, type: "garbage" },
+      { x: -10, y: 2, z: 0, type: "rooftop" },
+      { x: -15, y: 3, z: 5, type: "garbage" },
+      { x: -10, y: 4, z: 10, type: "rooftop" },
+      { x: -5, y: 5, z: 15, type: "rooftop" }
+    ];
+    platformPositions.forEach((platform) => {
+      let geometry, material;
+      if (platform.type === "garbage") {
+        geometry = new BoxGeometry(3, 1, 3);
+        material = new MeshStandardMaterial({
+          color: 2899536,
+          roughness: 0.9,
+          metalness: 0.1
+        });
+      } else {
+        geometry = new BoxGeometry(4, 0.5, 4);
+        material = new MeshStandardMaterial({
+          color: 9807270,
+          roughness: 0.7,
+          metalness: 0.3
+        });
+      }
+      const platformMesh = new Mesh(geometry, material);
+      platformMesh.position.set(platform.x, platform.y, platform.z);
+      platformMesh.castShadow = true;
+      platformMesh.receiveShadow = true;
+      scene.add(platformMesh);
+      platforms.push(platformMesh);
+    });
+  }
+  function loadPlayerCharacter() {
+    const playerGeometry = new BoxGeometry(1, 2, 1);
+    const playerMaterial = new MeshStandardMaterial({ color: 16711680 });
+    player = new Mesh(playerGeometry, playerMaterial);
+    player.position.set(0, 1, 0);
+    player.castShadow = true;
+    scene.add(player);
+    sendPositionUpdate();
+  }
+  function setupEventListeners() {
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("resize", handleResize);
+    if (isMobile) {
+      const gameContainer = document.getElementById("game-container");
+      if (gameContainer) {
+        gameContainer.addEventListener("touchstart", handleTouchStart);
+        gameContainer.addEventListener("touchmove", handleTouchMove);
+        gameContainer.addEventListener("touchend", handleTouchEnd);
+      }
+    }
+    window.addEventListener("message", (event) => {
+      if (event.data.type === "startGame") {
+        gameStarted = true;
+        builderMode = false;
+        console.log("Game started");
+        if (player) player.visible = true;
+        const builderUI = document.getElementById("builder-ui");
+        if (builderUI) builderUI.remove();
+        const builderToolbar = document.getElementById("builder-toolbar");
+        if (builderToolbar) builderToolbar.remove();
+      } else if (event.data.type === "startBuilder") {
+        const template = event.data.data?.template || "medium";
+        localStorage.setItem("builderTemplate", template);
+        enterBuilderMode(template);
+        console.log("Builder mode started with template:", template);
+      }
+    });
+    setInterval(() => {
+      if (builderMode) {
+        saveBuilderState();
+      }
+    }, 3e4);
+  }
+  function handleKeyDown(event) {
+    if (builderMode) {
       switch (event.key.toLowerCase()) {
         case "w":
-          position.z -= speed;
+          buildControls.forward = true;
           break;
         case "s":
-          position.z += speed;
+          buildControls.backward = true;
           break;
         case "a":
-          position.x -= speed;
+          buildControls.left = true;
           break;
         case "d":
-          position.x += speed;
+          buildControls.right = true;
+          break;
+        case "q":
+          buildControls.up = true;
+          break;
+        case "e":
+          buildControls.down = true;
+          break;
+        case "arrowleft":
+          buildControls.rotateLeft = true;
+          break;
+        case "arrowright":
+          buildControls.rotateRight = true;
+          break;
+        case "1":
+          selectedBlockType = "platform";
+          createPlacementPreview();
+          break;
+        case "2":
+          selectedBlockType = "start";
+          createPlacementPreview();
+          break;
+        case "3":
+          selectedBlockType = "finish";
+          createPlacementPreview();
+          break;
+        case "enter":
+          saveCourse();
+          break;
+        case "escape":
+          exitBuilderMode();
+          break;
+      }
+    } else {
+      switch (event.key.toLowerCase()) {
+        case "w":
+          keyState.forward = true;
+          break;
+        case "s":
+          keyState.backward = true;
+          break;
+        case "a":
+          keyState.left = true;
+          break;
+        case "d":
+          keyState.right = true;
           break;
         case " ":
-          if (!isJumping) {
-            isJumping = true;
-            jump();
-          }
+          keyState.jump = true;
           break;
       }
-      updatePosition();
-    });
-    window.addEventListener("message", (event) => {
-      console.log("Received message:", event.data);
-      if (event.data.type === "startGame") {
-        animate();
-        window.parent.postMessage({ type: "webViewReady" }, "*");
-        console.log("Sent webViewReady message");
+    }
+  }
+  function handleKeyUp(event) {
+    if (builderMode) {
+      switch (event.key.toLowerCase()) {
+        case "w":
+          buildControls.forward = false;
+          break;
+        case "s":
+          buildControls.backward = false;
+          break;
+        case "a":
+          buildControls.left = false;
+          break;
+        case "d":
+          buildControls.right = false;
+          break;
+        case "q":
+          buildControls.up = false;
+          break;
+        case "e":
+          buildControls.down = false;
+          break;
+        case "arrowleft":
+          buildControls.rotateLeft = false;
+          break;
+        case "arrowright":
+          buildControls.rotateRight = false;
+          break;
       }
-    });
-    window.addEventListener("resize", () => {
+    } else {
+      switch (event.key.toLowerCase()) {
+        case "w":
+          keyState.forward = false;
+          break;
+        case "s":
+          keyState.backward = false;
+          break;
+        case "a":
+          keyState.left = false;
+          break;
+        case "d":
+          keyState.right = false;
+          break;
+        case " ":
+          keyState.jump = false;
+          break;
+      }
+    }
+  }
+  function handleResize() {
+    if (camera && renderer) {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+  }
+  function createMobileControls() {
+    const joystickElement = document.createElement("div");
+    joystickElement.id = "joystick";
+    joystickElement.style.position = "absolute";
+    joystickElement.style.left = "100px";
+    joystickElement.style.bottom = "100px";
+    joystickElement.style.width = "100px";
+    joystickElement.style.height = "100px";
+    joystickElement.style.borderRadius = "50%";
+    joystickElement.style.backgroundColor = "rgba(255, 255, 255, 0.3)";
+    joystickElement.style.border = "2px solid white";
+    joystickElement.style.touchAction = "none";
+    const knobElement = document.createElement("div");
+    knobElement.id = "joystick-knob";
+    knobElement.style.position = "absolute";
+    knobElement.style.left = "35px";
+    knobElement.style.top = "35px";
+    knobElement.style.width = "30px";
+    knobElement.style.height = "30px";
+    knobElement.style.borderRadius = "50%";
+    knobElement.style.backgroundColor = "rgba(255, 255, 255, 0.7)";
+    joystickElement.appendChild(knobElement);
+    const jumpButton = document.createElement("div");
+    jumpButton.id = "jump-button";
+    jumpButton.style.position = "absolute";
+    jumpButton.style.right = "100px";
+    jumpButton.style.bottom = "100px";
+    jumpButton.style.width = "80px";
+    jumpButton.style.height = "80px";
+    jumpButton.style.borderRadius = "50%";
+    jumpButton.style.backgroundColor = "rgba(255, 80, 80, 0.7)";
+    jumpButton.style.border = "2px solid white";
+    jumpButton.style.display = "flex";
+    jumpButton.style.justifyContent = "center";
+    jumpButton.style.alignItems = "center";
+    jumpButton.style.color = "white";
+    jumpButton.style.fontWeight = "bold";
+    jumpButton.style.fontSize = "18px";
+    jumpButton.innerText = "JUMP";
+    jumpButton.style.touchAction = "none";
+    jumpButton.addEventListener("touchstart", () => {
+      keyState.jump = true;
     });
-    animate();
+    jumpButton.addEventListener("touchend", () => {
+      keyState.jump = false;
+    });
+    const container = document.getElementById("game-container");
+    if (container) {
+      container.appendChild(joystickElement);
+      container.appendChild(jumpButton);
+    }
   }
-  function updatePosition() {
-    cube.position.set(position.x, position.y, position.z);
-    window.parent.postMessage({ type: "positionUpdate", data: position }, "*");
-  }
-  function jump() {
-    let jumpHeight = 0;
-    const jumpInterval = setInterval(() => {
-      if (jumpHeight < 1) {
-        position.y += 0.1;
-        jumpHeight += 0.1;
-      } else if (jumpHeight < 2) {
-        position.y -= 0.1;
-        jumpHeight += 0.1;
-      } else {
-        position.y = 0;
-        clearInterval(jumpInterval);
-        isJumping = false;
+  function handleTouchStart(event) {
+    const touch = event.touches[0];
+    const joystick = document.getElementById("joystick");
+    if (joystick) {
+      const joystickRect = joystick.getBoundingClientRect();
+      if (touch.clientX >= joystickRect.left && touch.clientX <= joystickRect.right && touch.clientY >= joystickRect.top && touch.clientY <= joystickRect.bottom) {
+        touchJoystick.active = true;
+        touchJoystick.startX = joystickRect.left + joystickRect.width / 2;
+        touchJoystick.startY = joystickRect.top + joystickRect.height / 2;
+        updateJoystickPosition(touch.clientX, touch.clientY);
       }
-      updatePosition();
-    }, 50);
+    }
+  }
+  function handleTouchMove(event) {
+    if (touchJoystick.active) {
+      event.preventDefault();
+      const touch = event.touches[0];
+      updateJoystickPosition(touch.clientX, touch.clientY);
+    }
+  }
+  function handleTouchEnd() {
+    if (touchJoystick.active) {
+      touchJoystick.active = false;
+      joystickPosition = { x: 0, y: 0 };
+      const knob = document.getElementById("joystick-knob");
+      if (knob) {
+        knob.style.left = "35px";
+        knob.style.top = "35px";
+      }
+      keyState.forward = false;
+      keyState.backward = false;
+      keyState.left = false;
+      keyState.right = false;
+    }
+  }
+  function updateJoystickPosition(touchX, touchY) {
+    const deltaX = touchX - touchJoystick.startX;
+    const deltaY = touchY - touchJoystick.startY;
+    const distance = Math.min(Math.sqrt(deltaX * deltaX + deltaY * deltaY), 50);
+    const angle = Math.atan2(deltaY, deltaX);
+    joystickPosition.x = Math.cos(angle) * (distance / 50);
+    joystickPosition.y = Math.sin(angle) * (distance / 50);
+    const knob = document.getElementById("joystick-knob");
+    if (knob) {
+      knob.style.left = 35 + joystickPosition.x * 35 + "px";
+      knob.style.top = 35 + joystickPosition.y * 35 + "px";
+    }
+    keyState.forward = joystickPosition.y < -0.3;
+    keyState.backward = joystickPosition.y > 0.3;
+    keyState.left = joystickPosition.x < -0.3;
+    keyState.right = joystickPosition.x > 0.3;
+  }
+  function updatePlayer(deltaTime) {
+    if (!player) return;
+    const moveDirection = new Vector3(0, 0, 0);
+    const cameraDirection = new Vector3();
+    camera.getWorldDirection(cameraDirection);
+    cameraDirection.y = 0;
+    cameraDirection.normalize();
+    const right = new Vector3();
+    right.crossVectors(new Vector3(0, 1, 0), cameraDirection).normalize();
+    if (keyState.forward) {
+      moveDirection.add(cameraDirection);
+    }
+    if (keyState.backward) {
+      moveDirection.sub(cameraDirection);
+    }
+    if (keyState.left) {
+      moveDirection.add(right);
+    }
+    if (keyState.right) {
+      moveDirection.sub(right);
+    }
+    if (moveDirection.lengthSq() > 0) {
+      moveDirection.normalize();
+      if (moveDirection.length() > 0) {
+        const targetRotation = Math.atan2(moveDirection.x, moveDirection.z);
+        player.rotation.y = targetRotation;
+      }
+      moveDirection.multiplyScalar(playerState.speed * deltaTime);
+      player.position.x += moveDirection.x;
+      player.position.z += moveDirection.z;
+    }
+    playerState.velocity.y -= playerState.gravity * deltaTime;
+    if (keyState.jump && playerState.onGround) {
+      playerState.velocity.y = playerState.jumpPower;
+      playerState.onGround = false;
+      playerState.jumping = true;
+    }
+    player.position.y += playerState.velocity.y * deltaTime;
+    const raycaster = new Raycaster();
+    raycaster.set(
+      new Vector3(player.position.x, player.position.y, player.position.z),
+      new Vector3(0, -1, 0)
+    );
+    const intersects = raycaster.intersectObjects(
+      [...platforms, scene.children.find((child) => child instanceof Mesh && child.rotation.x === -Math.PI / 2)]
+    );
+    if (intersects.length > 0 && intersects[0].distance < 1.1) {
+      playerState.velocity.y = 0;
+      player.position.y = intersects[0].point.y + 1;
+      playerState.onGround = true;
+      playerState.jumping = false;
+    } else {
+      playerState.onGround = false;
+    }
+    if (player.position.y < 1) {
+      player.position.y = 1;
+      playerState.velocity.y = 0;
+      playerState.onGround = true;
+      playerState.jumping = false;
+    }
+    updateCamera();
+    updatePlayerAnimation();
+    sendPositionUpdate();
+  }
+  function updateCamera() {
+    if (!player) return;
+    const idealOffset = new Vector3(-5, 5, -5);
+    idealOffset.applyQuaternion(player.quaternion);
+    idealOffset.add(player.position);
+    camera.position.lerp(idealOffset, 0.1);
+    camera.lookAt(player.position);
+  }
+  function updatePlayerAnimation() {
+    if (!mixer || !actions.idle || !actions.running || !actions.jumping) return;
+    let newAnimation = "idle";
+    if (playerState.jumping) {
+      newAnimation = "jumping";
+    } else if (keyState.forward || keyState.backward || keyState.left || keyState.right) {
+      newAnimation = "running";
+    }
+    if (newAnimation !== playerState.currentAnimation) {
+      const current = getActionByName(playerState.currentAnimation);
+      if (current) {
+        current.fadeOut(0.2);
+      }
+      const next = getActionByName(newAnimation);
+      if (next) {
+        next.reset().fadeIn(0.2).play();
+      }
+      playerState.currentAnimation = newAnimation;
+    }
+  }
+  function getActionByName(name) {
+    switch (name) {
+      case "idle":
+        return actions.idle;
+      case "running":
+        return actions.running;
+      case "jumping":
+        return actions.jumping;
+      default:
+        return null;
+    }
+  }
+  function sendPositionUpdate() {
+    if (!player) return;
+    window.parent.postMessage({
+      type: "positionUpdate",
+      data: {
+        x: player.position.x,
+        y: player.position.y,
+        z: player.position.z,
+        onGround: playerState.onGround,
+        animation: playerState.currentAnimation
+      }
+    }, "*");
   }
   function animate() {
     requestAnimationFrame(animate);
+    const deltaTime = Math.min(clock.getDelta(), 0.1);
+    if (builderMode) {
+      updateBuilderCamera(deltaTime);
+      updatePlacementPreview();
+    } else if (gameStarted && player) {
+      updatePlayer(deltaTime);
+    }
+    if (mixer) {
+      mixer.update(deltaTime);
+    }
     renderer.render(scene, camera);
+  }
+  function updateBuilderCamera(deltaTime) {
+    if (!builderMode) return;
+    const direction = new Vector3(0, 0, -1);
+    direction.applyQuaternion(camera.quaternion);
+    const right = new Vector3(1, 0, 0);
+    right.applyQuaternion(camera.quaternion);
+    const moveSpeed = buildCameraSpeed * deltaTime;
+    if (buildControls.forward) {
+      camera.position.addScaledVector(direction, moveSpeed);
+    }
+    if (buildControls.backward) {
+      camera.position.addScaledVector(direction, -moveSpeed);
+    }
+    if (buildControls.left) {
+      camera.position.addScaledVector(right, -moveSpeed);
+    }
+    if (buildControls.right) {
+      camera.position.addScaledVector(right, moveSpeed);
+    }
+    if (buildControls.up) {
+      camera.position.y += moveSpeed;
+    }
+    if (buildControls.down) {
+      camera.position.y -= moveSpeed;
+    }
+    if (!document.pointerLockElement) {
+      if (buildControls.rotateLeft) {
+        camera.rotation.y += buildRotationSpeed * deltaTime;
+      }
+      if (buildControls.rotateRight) {
+        camera.rotation.y -= buildRotationSpeed * deltaTime;
+      }
+    }
+    if (Math.floor(Date.now() / 1e3) % 5 === 0) {
+      console.log(`Camera position: x=${camera.position.x.toFixed(2)}, y=${camera.position.y.toFixed(2)}, z=${camera.position.z.toFixed(2)}`);
+    }
+  }
+  function enterBuilderMode(template) {
+    console.log(`Entering builder mode with template: ${template}`);
+    builderMode = true;
+    gameStarted = true;
+    courseTemplate = template;
+    currentBuilderTool = "build";
+    if (player) {
+      player.visible = false;
+    }
+    camera.position.set(0, 10, 20);
+    camera.rotation.set(0, 0, 0);
+    clearExistingBlocks();
+    setupBuilderEventListeners();
+    setupCourseTemplate(template);
+    selectedBlockType = "platform";
+    createPlacementPreview();
+    setupBuilderUI();
+    createBuilderToolbar();
+    console.log("Builder mode initialized. First-person camera enabled.");
+    saveBuilderState();
+  }
+  function clearExistingBlocks() {
+    buildingBlocks.forEach((block) => {
+      scene.remove(block);
+    });
+    buildingBlocks = [];
+    platforms = platforms.filter((platform) => {
+      if (platform.position.y < 0.5) {
+        return true;
+      }
+      scene.remove(platform);
+      return false;
+    });
+  }
+  function setupBuilderEventListeners() {
+    const gameContainer = document.getElementById("game-container");
+    if (!gameContainer) return;
+    gameContainer.removeEventListener("mousedown", handleBuilderMouseDown);
+    document.removeEventListener("mouseup", handleBuilderMouseUp);
+    document.removeEventListener("mousemove", handleMouseMove);
+    gameContainer.addEventListener("mousedown", handleBuilderMouseDown);
+    document.addEventListener("mouseup", handleBuilderMouseUp);
+    gameContainer.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+    });
+  }
+  function handleBuilderMouseDown(event) {
+    if (!builderMode) return;
+    event.preventDefault();
+    if (event.button === 0) {
+      if (currentBuilderTool === "build" && placementPreview) {
+        placeBlock();
+      } else if (currentBuilderTool === "remove") {
+        removeBlock();
+      }
+    } else if (event.button === 2) {
+      rightClickRotating = true;
+      document.addEventListener("mousemove", handleMouseMove);
+    }
+  }
+  function handleBuilderMouseUp(event) {
+    if (!builderMode) return;
+    if (event.button === 2) {
+      rightClickRotating = false;
+      document.removeEventListener("mousemove", handleMouseMove);
+    }
+  }
+  function handleMouseMove(event) {
+    if (!builderMode) return;
+    if (rightClickRotating || document.pointerLockElement) {
+      const movementX = event.movementX || 0;
+      camera.rotation.y -= movementX * 2e-3;
+      camera.rotation.x = 0;
+      camera.rotation.z = 0;
+      updatePlacementPreview();
+      if (Math.floor(Date.now() / 1e3) % 10 === 0) {
+        saveBuilderState();
+      }
+    }
+  }
+  function createBuilderToolbar() {
+    const container = document.getElementById("game-container");
+    if (!container) return;
+    const existingToolbar = document.getElementById("builder-toolbar");
+    if (existingToolbar) {
+      existingToolbar.remove();
+    }
+    const toolbar = document.createElement("div");
+    toolbar.id = "builder-toolbar";
+    toolbar.style.position = "absolute";
+    toolbar.style.bottom = "20px";
+    toolbar.style.left = "50%";
+    toolbar.style.transform = "translateX(-50%)";
+    toolbar.style.display = "flex";
+    toolbar.style.gap = "10px";
+    toolbar.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
+    toolbar.style.padding = "10px";
+    toolbar.style.borderRadius = "10px";
+    toolbar.style.zIndex = "1000";
+    const tools = [
+      { id: "build", icon: "\u{1F9F1}", label: "Build" },
+      { id: "remove", icon: "\u{1F5D1}\uFE0F", label: "Remove" },
+      { id: "camera", icon: "\u{1F3A5}", label: "Camera" }
+    ];
+    tools.forEach((tool) => {
+      const button = document.createElement("button");
+      button.id = `tool-${tool.id}`;
+      button.innerHTML = `<div style="font-size: 24px">${tool.icon}</div><div>${tool.label}</div>`;
+      button.style.display = "flex";
+      button.style.flexDirection = "column";
+      button.style.alignItems = "center";
+      button.style.justifyContent = "center";
+      button.style.backgroundColor = currentBuilderTool === tool.id ? "#4CAF50" : "#333";
+      button.style.color = "white";
+      button.style.border = "none";
+      button.style.borderRadius = "8px";
+      button.style.padding = "10px 15px";
+      button.style.cursor = "pointer";
+      button.style.width = "80px";
+      button.style.height = "80px";
+      button.addEventListener("click", () => {
+        currentBuilderTool = tool.id;
+        updateToolbarSelection();
+        if (placementPreview) {
+          placementPreview.visible = tool.id === "build";
+        }
+        saveBuilderState();
+      });
+      toolbar.appendChild(button);
+    });
+    container.appendChild(toolbar);
+  }
+  function updateToolbarSelection() {
+    const tools = ["build", "remove", "camera"];
+    tools.forEach((tool) => {
+      const button = document.getElementById(`tool-${tool}`);
+      if (button) {
+        button.style.backgroundColor = currentBuilderTool === tool ? "#4CAF50" : "#333";
+      }
+    });
+    const container = document.getElementById("game-container");
+    if (container) {
+      switch (currentBuilderTool) {
+        case "build":
+          container.style.cursor = "cell";
+          break;
+        case "remove":
+          container.style.cursor = "not-allowed";
+          break;
+        case "camera":
+          container.style.cursor = "move";
+          break;
+        default:
+          container.style.cursor = "default";
+      }
+    }
+  }
+  function setupCourseTemplate(template) {
+    createGround();
+    const killzoneGeometry = new PlaneGeometry(400, 400);
+    const killzoneMaterial = new MeshBasicMaterial({
+      color: 16711680,
+      transparent: true,
+      opacity: 0.3
+    });
+    const killzone = new Mesh(killzoneGeometry, killzoneMaterial);
+    killzone.rotation.x = -Math.PI / 2;
+    killzone.position.y = -10;
+    scene.add(killzone);
+    let size;
+    switch (template) {
+      case "small":
+        size = 50;
+        break;
+      case "large":
+        size = 150;
+        break;
+      case "medium":
+      default:
+        size = 100;
+    }
+    const startGeometry = new BoxGeometry(5, 1, 5);
+    const startMaterial = new MeshStandardMaterial({
+      color: 65280,
+      roughness: 0.7
+    });
+    const startPlatform = new Mesh(startGeometry, startMaterial);
+    startPlatform.position.set(-size / 4, 1, -size / 4);
+    startPlatform.userData = { type: "start" };
+    scene.add(startPlatform);
+    buildingBlocks.push(startPlatform);
+    const finishGeometry = new BoxGeometry(5, 1, 5);
+    const finishMaterial = new MeshStandardMaterial({
+      color: 255,
+      roughness: 0.7
+    });
+    const finishPlatform = new Mesh(finishGeometry, finishMaterial);
+    finishPlatform.position.set(size / 4, 1, size / 4);
+    finishPlatform.userData = { type: "finish" };
+    scene.add(finishPlatform);
+    buildingBlocks.push(finishPlatform);
+  }
+  function createPlacementPreview() {
+    if (placementPreview) {
+      scene.remove(placementPreview);
+      placementPreview = null;
+    }
+    let geometry, material;
+    switch (selectedBlockType) {
+      case "start":
+        geometry = new BoxGeometry(5, 1, 5);
+        material = new MeshStandardMaterial({
+          color: 65280,
+          transparent: true,
+          opacity: 0.5
+        });
+        break;
+      case "finish":
+        geometry = new BoxGeometry(5, 1, 5);
+        material = new MeshStandardMaterial({
+          color: 255,
+          transparent: true,
+          opacity: 0.5
+        });
+        break;
+      case "platform":
+      default:
+        geometry = new BoxGeometry(3, 1, 3);
+        material = new MeshStandardMaterial({
+          color: 13421772,
+          transparent: true,
+          opacity: 0.5
+        });
+    }
+    placementPreview = new Mesh(geometry, material);
+    scene.add(placementPreview);
+    updatePlacementPreview();
+  }
+  function updatePlacementPreview() {
+    if (!placementPreview) return;
+    const direction = new Vector3(0, 0, -1);
+    direction.applyQuaternion(camera.quaternion);
+    const raycaster = new Raycaster();
+    raycaster.set(camera.position, direction);
+    const intersectables = [...buildingBlocks, ...platforms];
+    const ground = scene.children.find((child) => child instanceof Mesh && child.rotation.x === -Math.PI / 2);
+    if (ground) intersectables.push(ground);
+    const intersects = raycaster.intersectObjects(intersectables);
+    if (intersects.length > 0 && intersects[0].distance < 20) {
+      const intersectPoint = intersects[0].point;
+      const normal = intersects[0].face?.normal || new Vector3(0, 1, 0);
+      const offset = 0.5;
+      placementPreview.position.copy(intersectPoint).add(normal.multiplyScalar(offset));
+      placementPreview.position.x = Math.round(placementPreview.position.x);
+      placementPreview.position.y = Math.round(placementPreview.position.y);
+      placementPreview.position.z = Math.round(placementPreview.position.z);
+      placementPreview.visible = true;
+    } else {
+      placementPreview.position.copy(camera.position).add(direction.multiplyScalar(10));
+      placementPreview.position.x = Math.round(placementPreview.position.x);
+      placementPreview.position.y = Math.round(placementPreview.position.y);
+      placementPreview.position.z = Math.round(placementPreview.position.z);
+    }
+  }
+  function placeBlock() {
+    if (!placementPreview) return;
+    let geometry, material;
+    switch (selectedBlockType) {
+      case "start":
+        geometry = new BoxGeometry(5, 1, 5);
+        material = new MeshStandardMaterial({
+          color: 65280,
+          roughness: 0.7
+        });
+        break;
+      case "finish":
+        geometry = new BoxGeometry(5, 1, 5);
+        material = new MeshStandardMaterial({
+          color: 255,
+          roughness: 0.7
+        });
+        break;
+      case "platform":
+      default:
+        geometry = new BoxGeometry(3, 1, 3);
+        material = new MeshStandardMaterial({
+          color: 13421772,
+          roughness: 0.7
+        });
+    }
+    const block = new Mesh(geometry, material);
+    block.position.copy(placementPreview.position);
+    block.userData = { type: selectedBlockType };
+    block.castShadow = true;
+    block.receiveShadow = true;
+    scene.add(block);
+    buildingBlocks.push(block);
+    platforms.push(block);
+    console.log(`Placed ${selectedBlockType} block at position: `, block.position);
+  }
+  function removeBlock() {
+    if (!placementPreview) return;
+    let closestIndex = -1;
+    let minDistance = Infinity;
+    for (let i = 0; i < buildingBlocks.length; i++) {
+      const block = buildingBlocks[i];
+      if (placementPreview) {
+        const distance = block.position.distanceTo(placementPreview.position);
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestIndex = i;
+        }
+      }
+    }
+    if (closestIndex !== -1 && minDistance < 5) {
+      const blockToRemove = buildingBlocks[closestIndex];
+      scene.remove(blockToRemove);
+      buildingBlocks.splice(closestIndex, 1);
+      const platformIndex = platforms.indexOf(blockToRemove);
+      if (platformIndex !== -1) {
+        platforms.splice(platformIndex, 1);
+      }
+      console.log(`Removed block at position: ${blockToRemove.position.x}, ${blockToRemove.position.y}, ${blockToRemove.position.z}`);
+    }
+  }
+  function setupBuilderUI() {
+    const container = document.getElementById("game-container");
+    if (!container) return;
+    const existingUI = document.getElementById("builder-ui");
+    if (existingUI) {
+      existingUI.remove();
+    }
+    const builderUI = document.createElement("div");
+    builderUI.id = "builder-ui";
+    builderUI.style.position = "absolute";
+    builderUI.style.top = "10px";
+    builderUI.style.left = "10px";
+    builderUI.style.display = "flex";
+    builderUI.style.flexDirection = "column";
+    builderUI.style.gap = "10px";
+    builderUI.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
+    builderUI.style.color = "white";
+    builderUI.style.padding = "15px";
+    builderUI.style.borderRadius = "8px";
+    builderUI.style.zIndex = "100";
+    const title = document.createElement("h2");
+    title.textContent = "Course Builder";
+    title.style.margin = "0 0 10px 0";
+    title.style.textAlign = "center";
+    builderUI.appendChild(title);
+    const blockTypeLabel = document.createElement("div");
+    blockTypeLabel.textContent = "Block Type:";
+    blockTypeLabel.style.fontWeight = "bold";
+    builderUI.appendChild(blockTypeLabel);
+    const blockTypeSelector = document.createElement("div");
+    blockTypeSelector.style.display = "flex";
+    blockTypeSelector.style.gap = "5px";
+    blockTypeSelector.style.marginBottom = "10px";
+    const createButton = (text, type, color) => {
+      const button = document.createElement("button");
+      button.textContent = text;
+      button.className = "block-button";
+      button.style.padding = "8px";
+      button.style.backgroundColor = type === selectedBlockType ? "#4CAF50" : "#f1f1f1";
+      button.style.border = "none";
+      button.style.borderRadius = "4px";
+      button.style.cursor = "pointer";
+      button.style.color = type === selectedBlockType ? "white" : "black";
+      button.style.flex = "1";
+      const colorIndicator = document.createElement("div");
+      colorIndicator.style.width = "10px";
+      colorIndicator.style.height = "10px";
+      colorIndicator.style.backgroundColor = color;
+      colorIndicator.style.display = "inline-block";
+      colorIndicator.style.marginRight = "5px";
+      colorIndicator.style.borderRadius = "2px";
+      button.prepend(colorIndicator);
+      button.addEventListener("click", () => {
+        selectedBlockType = type;
+        createPlacementPreview();
+        currentBuilderTool = "build";
+        updateToolbarSelection();
+        Array.from(blockTypeSelector.children).forEach((child) => {
+          child.style.backgroundColor = "#f1f1f1";
+          child.style.color = "black";
+        });
+        button.style.backgroundColor = "#4CAF50";
+        button.style.color = "white";
+        saveBuilderState();
+      });
+      return button;
+    };
+    blockTypeSelector.appendChild(createButton("Platform", "platform", "#cccccc"));
+    blockTypeSelector.appendChild(createButton("Start", "start", "#00ff00"));
+    blockTypeSelector.appendChild(createButton("Finish", "finish", "#0000ff"));
+    builderUI.appendChild(blockTypeSelector);
+    const saveButton = document.createElement("button");
+    saveButton.textContent = "Save Course";
+    saveButton.className = "save-button";
+    saveButton.style.padding = "10px";
+    saveButton.style.backgroundColor = "#2196F3";
+    saveButton.style.marginBottom = "10px";
+    saveButton.addEventListener("click", saveCourse);
+    builderUI.appendChild(saveButton);
+    const exitButton = document.createElement("button");
+    exitButton.textContent = "Exit Without Saving";
+    exitButton.style.padding = "8px";
+    exitButton.style.backgroundColor = "#f44336";
+    exitButton.style.color = "white";
+    exitButton.style.border = "none";
+    exitButton.style.borderRadius = "4px";
+    exitButton.style.cursor = "pointer";
+    exitButton.style.marginBottom = "10px";
+    exitButton.addEventListener("click", exitBuilderMode);
+    builderUI.appendChild(exitButton);
+    const instructions = document.createElement("div");
+    instructions.className = "control-instructions";
+    instructions.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
+    instructions.style.padding = "10px";
+    instructions.style.borderRadius = "4px";
+    instructions.style.maxWidth = "300px";
+    instructions.innerHTML = `
+    <h3 style="margin: 0 0 5px 0">Builder Controls:</h3>
+    <p style="margin: 2px 0">WASD - Move horizontally</p>
+    <p style="margin: 2px 0">Q/E - Move up/down</p>
+    <p style="margin: 2px 0">Right-click + drag - Look around</p>
+    <p style="margin: 2px 0">Left Click - Place block or remove (based on selected tool)</p>
+    <p style="margin: 2px 0">Use toolbar at bottom to switch tools</p>
+    <p style="margin: 2px 0; color: #ffeb3b">Your course must have both start and finish blocks!</p>
+  `;
+    builderUI.appendChild(instructions);
+    const counterContainer = document.createElement("div");
+    counterContainer.id = "block-counter";
+    counterContainer.style.marginTop = "10px";
+    counterContainer.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+    counterContainer.style.padding = "5px";
+    counterContainer.style.borderRadius = "4px";
+    counterContainer.innerHTML = `
+    <p style="margin: 0">Blocks placed: ${buildingBlocks.length}</p>
+    <p style="margin: 0">Start blocks: ${buildingBlocks.filter((b) => b.userData.type === "start").length}</p>
+    <p style="margin: 0">Finish blocks: ${buildingBlocks.filter((b) => b.userData.type === "finish").length}</p>
+  `;
+    builderUI.appendChild(counterContainer);
+    container.appendChild(builderUI);
+    setInterval(() => {
+      const counter = document.getElementById("block-counter");
+      if (counter && builderMode) {
+        counter.innerHTML = `
+        <p style="margin: 0">Blocks placed: ${buildingBlocks.length}</p>
+        <p style="margin: 0">Start blocks: ${buildingBlocks.filter((b) => b.userData.type === "start").length}</p>
+        <p style="margin: 0">Finish blocks: ${buildingBlocks.filter((b) => b.userData.type === "finish").length}</p>
+      `;
+      }
+    }, 1e3);
+    if (isMobile) {
+      setupMobileBuilderControls();
+    }
+  }
+  function setupMobileBuilderControls() {
+    const container = document.getElementById("game-container");
+    if (!container) return;
+    const movementPad = document.createElement("div");
+    movementPad.id = "movement-pad";
+    movementPad.style.position = "absolute";
+    movementPad.style.bottom = "100px";
+    movementPad.style.left = "50px";
+    movementPad.style.width = "150px";
+    movementPad.style.height = "150px";
+    movementPad.style.display = "grid";
+    movementPad.style.gridTemplateColumns = "1fr 1fr 1fr";
+    movementPad.style.gridTemplateRows = "1fr 1fr 1fr";
+    const directions = [
+      { text: "\u2196", x: -1, y: 0, z: -1 },
+      { text: "\u2191", x: 0, y: 0, z: -1 },
+      { text: "\u2197", x: 1, y: 0, z: -1 },
+      { text: "\u2190", x: -1, y: 0, z: 0 },
+      { text: "\u2022", x: 0, y: 0, z: 0 },
+      { text: "\u2192", x: 1, y: 0, z: 0 },
+      { text: "\u2199", x: -1, y: 0, z: 1 },
+      { text: "\u2193", x: 0, y: 0, z: 1 },
+      { text: "\u2198", x: 1, y: 0, z: 1 }
+    ];
+    directions.forEach((dir) => {
+      const button = document.createElement("button");
+      button.textContent = dir.text;
+      button.style.backgroundColor = "rgba(255, 255, 255, 0.3)";
+      button.style.border = "1px solid white";
+      button.style.color = "white";
+      button.style.fontSize = "20px";
+      button.style.display = "flex";
+      button.style.justifyContent = "center";
+      button.style.alignItems = "center";
+      button.addEventListener("touchstart", () => {
+        if (dir.x < 0) buildControls.left = true;
+        if (dir.x > 0) buildControls.right = true;
+        if (dir.z < 0) buildControls.forward = true;
+        if (dir.z > 0) buildControls.backward = true;
+      });
+      button.addEventListener("touchend", () => {
+        if (dir.x < 0) buildControls.left = false;
+        if (dir.x > 0) buildControls.right = false;
+        if (dir.z < 0) buildControls.forward = false;
+        if (dir.z > 0) buildControls.backward = false;
+      });
+      movementPad.appendChild(button);
+    });
+    const upButton = document.createElement("button");
+    upButton.textContent = "Up";
+    upButton.style.position = "absolute";
+    upButton.style.right = "50px";
+    upButton.style.bottom = "150px";
+    upButton.style.width = "60px";
+    upButton.style.height = "60px";
+    upButton.style.backgroundColor = "rgba(255, 255, 255, 0.3)";
+    upButton.style.border = "1px solid white";
+    upButton.style.borderRadius = "50%";
+    upButton.style.color = "white";
+    upButton.addEventListener("touchstart", () => {
+      buildControls.up = true;
+    });
+    upButton.addEventListener("touchend", () => {
+      buildControls.up = false;
+    });
+    const downButton = document.createElement("button");
+    downButton.textContent = "Down";
+    downButton.style.position = "absolute";
+    downButton.style.right = "50px";
+    downButton.style.bottom = "80px";
+    downButton.style.width = "60px";
+    downButton.style.height = "60px";
+    downButton.style.backgroundColor = "rgba(255, 255, 255, 0.3)";
+    downButton.style.border = "1px solid white";
+    downButton.style.borderRadius = "50%";
+    downButton.style.color = "white";
+    downButton.addEventListener("touchstart", () => {
+      buildControls.down = true;
+    });
+    downButton.addEventListener("touchend", () => {
+      buildControls.down = false;
+    });
+    const rotateLeftButton = document.createElement("button");
+    rotateLeftButton.textContent = "\u27F2";
+    rotateLeftButton.style.position = "absolute";
+    rotateLeftButton.style.right = "120px";
+    rotateLeftButton.style.bottom = "115px";
+    rotateLeftButton.style.width = "60px";
+    rotateLeftButton.style.height = "60px";
+    rotateLeftButton.style.backgroundColor = "rgba(255, 255, 255, 0.3)";
+    rotateLeftButton.style.border = "1px solid white";
+    rotateLeftButton.style.borderRadius = "50%";
+    rotateLeftButton.style.color = "white";
+    rotateLeftButton.style.fontSize = "24px";
+    rotateLeftButton.addEventListener("touchstart", () => {
+      buildControls.rotateLeft = true;
+    });
+    rotateLeftButton.addEventListener("touchend", () => {
+      buildControls.rotateLeft = false;
+    });
+    const rotateRightButton = document.createElement("button");
+    rotateRightButton.textContent = "\u27F3";
+    rotateRightButton.style.position = "absolute";
+    rotateRightButton.style.right = "190px";
+    rotateRightButton.style.bottom = "115px";
+    rotateRightButton.style.width = "60px";
+    rotateRightButton.style.height = "60px";
+    rotateRightButton.style.backgroundColor = "rgba(255, 255, 255, 0.3)";
+    rotateRightButton.style.border = "1px solid white";
+    rotateRightButton.style.borderRadius = "50%";
+    rotateRightButton.style.color = "white";
+    rotateRightButton.style.fontSize = "24px";
+    rotateRightButton.addEventListener("touchstart", () => {
+      buildControls.rotateRight = true;
+    });
+    rotateRightButton.addEventListener("touchend", () => {
+      buildControls.rotateRight = false;
+    });
+    container.appendChild(movementPad);
+    container.appendChild(upButton);
+    container.appendChild(downButton);
+    container.appendChild(rotateLeftButton);
+    container.appendChild(rotateRightButton);
+  }
+  function saveCourse() {
+    if (!builderMode) return;
+    const blocks = buildingBlocks.map((block) => ({
+      position: {
+        x: block.position.x,
+        y: block.position.y,
+        z: block.position.z
+      },
+      type: block.userData.type,
+      size: block.geometry.type.includes("Box") ? block.geometry.parameters : { width: 3, height: 1, depth: 3 }
+    }));
+    const startBlock = buildingBlocks.find((block) => block.userData.type === "start");
+    const finishBlock = buildingBlocks.find((block) => block.userData.type === "finish");
+    if (!startBlock || !finishBlock) {
+      console.error("Course must have start and finish blocks");
+      return;
+    }
+    const courseData = {
+      template: courseTemplate,
+      blocks,
+      startPosition: {
+        x: startBlock.position.x,
+        y: startBlock.position.y + 1,
+        // Player spawns above the start block
+        z: startBlock.position.z
+      },
+      finishPosition: {
+        x: finishBlock.position.x,
+        y: finishBlock.position.y,
+        z: finishBlock.position.z
+      }
+    };
+    window.parent.postMessage({
+      type: "courseCreated",
+      data: courseData
+    }, "*");
+    console.log("Course saved:", courseData);
+    exitBuilderMode();
+  }
+  function exitBuilderMode() {
+    builderMode = false;
+    const builderUI = document.getElementById("builder-ui");
+    if (builderUI) {
+      builderUI.remove();
+    }
+    const builderToolbar = document.getElementById("builder-toolbar");
+    if (builderToolbar) {
+      builderToolbar.remove();
+    }
+    if (placementPreview) {
+      scene.remove(placementPreview);
+      placementPreview = null;
+    }
+    const gameContainer = document.getElementById("game-container");
+    if (gameContainer) {
+      gameContainer.removeEventListener("mousedown", handleBuilderMouseDown);
+      gameContainer.style.cursor = "default";
+    }
+    document.removeEventListener("mouseup", handleBuilderMouseUp);
+    document.removeEventListener("mousemove", handleMouseMove);
+    if (player) player.visible = true;
+    camera.position.set(0, 5, 10);
+    camera.rotation.set(0, 0, 0);
+    localStorage.removeItem("builderState");
+    window.parent.postMessage({
+      type: "menuRequest",
+      data: { menu: "main" }
+    }, "*");
+  }
+  function saveBuilderState() {
+    if (!builderMode) return;
+    const state = {
+      isBuilderMode: builderMode,
+      template: courseTemplate,
+      cameraPosition: {
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z
+      },
+      cameraRotation: {
+        x: camera.rotation.x,
+        y: camera.rotation.y,
+        z: camera.rotation.z
+      },
+      selectedTool: currentBuilderTool,
+      selectedBlockType
+    };
+    localStorage.setItem("builderState", JSON.stringify(state));
+    localStorage.setItem("builderTemplate", courseTemplate);
+  }
+  function loadBuilderState() {
+    const stateStr = localStorage.getItem("builderState");
+    if (stateStr) {
+      try {
+        const state = JSON.parse(stateStr);
+        if (state.isBuilderMode) {
+          enterBuilderMode(state.template || "medium");
+          if (state.cameraPosition) {
+            camera.position.set(
+              state.cameraPosition.x,
+              state.cameraPosition.y,
+              state.cameraPosition.z
+            );
+          }
+          if (state.cameraRotation) {
+            camera.rotation.set(
+              0,
+              // Force x rotation to 0 (horizontal view)
+              state.cameraRotation.y,
+              0
+              // Force z rotation to 0
+            );
+          }
+          if (state.selectedTool) {
+            currentBuilderTool = state.selectedTool;
+            updateToolbarSelection();
+          }
+          if (state.selectedBlockType) {
+            selectedBlockType = state.selectedBlockType;
+            createPlacementPreview();
+          }
+          console.log("Builder state restored from localStorage");
+        }
+      } catch (error) {
+        console.error("Error loading builder state:", error);
+        localStorage.removeItem("builderState");
+        localStorage.removeItem("builderTemplate");
+      }
+    }
   }
   console.log("app.js loaded");
   init();
