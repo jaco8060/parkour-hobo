@@ -23788,14 +23788,11 @@ void main() {
   var platforms = [];
   var gameStarted = false;
   var isMobile = false;
-  var joystickPosition = { x: 0, y: 0 };
-  var touchJoystick = { active: false, startX: 0, startY: 0 };
   var builderMode = false;
   var buildingBlocks = [];
   var selectedBlockType = "platform";
   var courseTemplate = "medium";
   var currentBuilderTool = "build";
-  var rightClickRotating = false;
   var buildControls = {
     forward: false,
     backward: false,
@@ -23806,8 +23803,6 @@ void main() {
     rotateLeft: false,
     rotateRight: false
   };
-  var buildCameraSpeed = 10;
-  var buildRotationSpeed = 2;
   var placementPreview = null;
   var playerState = {
     position: new Vector3(0, 1, 0),
@@ -23827,6 +23822,9 @@ void main() {
     right: false,
     jump: false
   };
+  var isMouseDown = false;
+  var lastMouseX = 0;
+  var lastMouseY = 0;
   function init() {
     console.log("Initializing Three.js scene...");
     isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -23854,20 +23852,30 @@ void main() {
     }
     setupLighting();
     createGround();
-    createCityEnvironment();
+    if (!window.location.search.includes("builder=true")) {
+      createCityEnvironment();
+    }
     loadPlayerCharacter();
-    setupEventListeners();
+    console.log("Setting up global event listeners");
+    document.addEventListener("keydown", (event) => {
+      console.log("Raw keydown event:", event.key);
+      handleKeyDown(event);
+    });
+    document.addEventListener("keyup", (event) => {
+      console.log("Raw keyup event:", event.key);
+      handleKeyUp(event);
+    });
+    window.addEventListener("resize", handleResize);
     if (isMobile) {
       createMobileControls();
     }
     animate();
     window.parent.postMessage({ type: "webViewReady" }, "*");
     console.log("Sent webViewReady message");
-    loadBuilderState();
-    if (!builderMode) {
-      const savedTemplate = localStorage.getItem("builderTemplate") || "medium";
-      enterBuilderMode(savedTemplate);
-    }
+    localStorage.removeItem("builderState");
+    localStorage.removeItem("builderTemplate");
+    console.log("Starting in builder mode");
+    enterBuilderMode("medium");
   }
   function setupLighting() {
     const ambientLight = new AmbientLight(16777215, 0.5);
@@ -23974,88 +23982,8 @@ void main() {
     scene.add(player);
     sendPositionUpdate();
   }
-  function setupEventListeners() {
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("resize", handleResize);
-    if (isMobile) {
-      const gameContainer = document.getElementById("game-container");
-      if (gameContainer) {
-        gameContainer.addEventListener("touchstart", handleTouchStart);
-        gameContainer.addEventListener("touchmove", handleTouchMove);
-        gameContainer.addEventListener("touchend", handleTouchEnd);
-      }
-    }
-    window.addEventListener("message", (event) => {
-      if (event.data.type === "startGame") {
-        gameStarted = true;
-        builderMode = false;
-        console.log("Game started");
-        if (player) player.visible = true;
-        const builderUI = document.getElementById("builder-ui");
-        if (builderUI) builderUI.remove();
-        const builderToolbar = document.getElementById("builder-toolbar");
-        if (builderToolbar) builderToolbar.remove();
-      } else if (event.data.type === "startBuilder") {
-        const template = event.data.data?.template || "medium";
-        localStorage.setItem("builderTemplate", template);
-        enterBuilderMode(template);
-        console.log("Builder mode started with template:", template);
-      }
-    });
-    setInterval(() => {
-      if (builderMode) {
-        saveBuilderState();
-      }
-    }, 3e4);
-  }
   function handleKeyDown(event) {
-    if (builderMode) {
-      switch (event.key.toLowerCase()) {
-        case "w":
-          buildControls.forward = true;
-          break;
-        case "s":
-          buildControls.backward = true;
-          break;
-        case "a":
-          buildControls.left = true;
-          break;
-        case "d":
-          buildControls.right = true;
-          break;
-        case "q":
-          buildControls.up = true;
-          break;
-        case "e":
-          buildControls.down = true;
-          break;
-        case "arrowleft":
-          buildControls.rotateLeft = true;
-          break;
-        case "arrowright":
-          buildControls.rotateRight = true;
-          break;
-        case "1":
-          selectedBlockType = "platform";
-          createPlacementPreview();
-          break;
-        case "2":
-          selectedBlockType = "start";
-          createPlacementPreview();
-          break;
-        case "3":
-          selectedBlockType = "finish";
-          createPlacementPreview();
-          break;
-        case "enter":
-          saveCourse();
-          break;
-        case "escape":
-          exitBuilderMode();
-          break;
-      }
-    } else {
+    if (!builderMode) {
       switch (event.key.toLowerCase()) {
         case "w":
           keyState.forward = true;
@@ -24073,37 +24001,67 @@ void main() {
           keyState.jump = true;
           break;
       }
+      return;
+    }
+    event.preventDefault();
+    const key = event.key.toLowerCase();
+    let controlChanged = false;
+    switch (key) {
+      case "w":
+        if (!buildControls.forward) {
+          buildControls.forward = true;
+          controlChanged = true;
+        }
+        break;
+      case "s":
+        if (!buildControls.backward) {
+          buildControls.backward = true;
+          controlChanged = true;
+        }
+        break;
+      case "a":
+        if (!buildControls.left) {
+          buildControls.left = true;
+          controlChanged = true;
+        }
+        break;
+      case "d":
+        if (!buildControls.right) {
+          buildControls.right = true;
+          controlChanged = true;
+        }
+        break;
+      case "q":
+        if (!buildControls.up) {
+          buildControls.up = true;
+          controlChanged = true;
+        }
+        break;
+      case "e":
+        if (!buildControls.down) {
+          buildControls.down = true;
+          controlChanged = true;
+        }
+        break;
+      case "arrowleft":
+        if (!buildControls.rotateLeft) {
+          buildControls.rotateLeft = true;
+          controlChanged = true;
+        }
+        break;
+      case "arrowright":
+        if (!buildControls.rotateRight) {
+          buildControls.rotateRight = true;
+          controlChanged = true;
+        }
+        break;
+    }
+    if (controlChanged) {
+      console.log(`Key pressed: ${key}, Controls:`, { ...buildControls });
     }
   }
   function handleKeyUp(event) {
-    if (builderMode) {
-      switch (event.key.toLowerCase()) {
-        case "w":
-          buildControls.forward = false;
-          break;
-        case "s":
-          buildControls.backward = false;
-          break;
-        case "a":
-          buildControls.left = false;
-          break;
-        case "d":
-          buildControls.right = false;
-          break;
-        case "q":
-          buildControls.up = false;
-          break;
-        case "e":
-          buildControls.down = false;
-          break;
-        case "arrowleft":
-          buildControls.rotateLeft = false;
-          break;
-        case "arrowright":
-          buildControls.rotateRight = false;
-          break;
-      }
-    } else {
+    if (!builderMode) {
       switch (event.key.toLowerCase()) {
         case "w":
           keyState.forward = false;
@@ -24121,6 +24079,63 @@ void main() {
           keyState.jump = false;
           break;
       }
+      return;
+    }
+    event.preventDefault();
+    const key = event.key.toLowerCase();
+    let controlChanged = false;
+    switch (key) {
+      case "w":
+        if (buildControls.forward) {
+          buildControls.forward = false;
+          controlChanged = true;
+        }
+        break;
+      case "s":
+        if (buildControls.backward) {
+          buildControls.backward = false;
+          controlChanged = true;
+        }
+        break;
+      case "a":
+        if (buildControls.left) {
+          buildControls.left = false;
+          controlChanged = true;
+        }
+        break;
+      case "d":
+        if (buildControls.right) {
+          buildControls.right = false;
+          controlChanged = true;
+        }
+        break;
+      case "q":
+        if (buildControls.up) {
+          buildControls.up = false;
+          controlChanged = true;
+        }
+        break;
+      case "e":
+        if (buildControls.down) {
+          buildControls.down = false;
+          controlChanged = true;
+        }
+        break;
+      case "arrowleft":
+        if (buildControls.rotateLeft) {
+          buildControls.rotateLeft = false;
+          controlChanged = true;
+        }
+        break;
+      case "arrowright":
+        if (buildControls.rotateRight) {
+          buildControls.rotateRight = false;
+          controlChanged = true;
+        }
+        break;
+    }
+    if (controlChanged) {
+      console.log(`Key released: ${key}, Controls:`, { ...buildControls });
     }
   }
   function handleResize() {
@@ -24181,58 +24196,6 @@ void main() {
       container.appendChild(joystickElement);
       container.appendChild(jumpButton);
     }
-  }
-  function handleTouchStart(event) {
-    const touch = event.touches[0];
-    const joystick = document.getElementById("joystick");
-    if (joystick) {
-      const joystickRect = joystick.getBoundingClientRect();
-      if (touch.clientX >= joystickRect.left && touch.clientX <= joystickRect.right && touch.clientY >= joystickRect.top && touch.clientY <= joystickRect.bottom) {
-        touchJoystick.active = true;
-        touchJoystick.startX = joystickRect.left + joystickRect.width / 2;
-        touchJoystick.startY = joystickRect.top + joystickRect.height / 2;
-        updateJoystickPosition(touch.clientX, touch.clientY);
-      }
-    }
-  }
-  function handleTouchMove(event) {
-    if (touchJoystick.active) {
-      event.preventDefault();
-      const touch = event.touches[0];
-      updateJoystickPosition(touch.clientX, touch.clientY);
-    }
-  }
-  function handleTouchEnd() {
-    if (touchJoystick.active) {
-      touchJoystick.active = false;
-      joystickPosition = { x: 0, y: 0 };
-      const knob = document.getElementById("joystick-knob");
-      if (knob) {
-        knob.style.left = "35px";
-        knob.style.top = "35px";
-      }
-      keyState.forward = false;
-      keyState.backward = false;
-      keyState.left = false;
-      keyState.right = false;
-    }
-  }
-  function updateJoystickPosition(touchX, touchY) {
-    const deltaX = touchX - touchJoystick.startX;
-    const deltaY = touchY - touchJoystick.startY;
-    const distance = Math.min(Math.sqrt(deltaX * deltaX + deltaY * deltaY), 50);
-    const angle = Math.atan2(deltaY, deltaX);
-    joystickPosition.x = Math.cos(angle) * (distance / 50);
-    joystickPosition.y = Math.sin(angle) * (distance / 50);
-    const knob = document.getElementById("joystick-knob");
-    if (knob) {
-      knob.style.left = 35 + joystickPosition.x * 35 + "px";
-      knob.style.top = 35 + joystickPosition.y * 35 + "px";
-    }
-    keyState.forward = joystickPosition.y < -0.3;
-    keyState.backward = joystickPosition.y > 0.3;
-    keyState.left = joystickPosition.x < -0.3;
-    keyState.right = joystickPosition.x > 0.3;
   }
   function updatePlayer(deltaTime) {
     if (!player) return;
@@ -24369,170 +24332,107 @@ void main() {
     if (!builderMode) return;
     const direction = new Vector3(0, 0, -1);
     direction.applyQuaternion(camera.quaternion);
+    direction.y = 0;
+    direction.normalize();
     const right = new Vector3(1, 0, 0);
     right.applyQuaternion(camera.quaternion);
-    const moveSpeed = buildCameraSpeed * deltaTime;
+    right.y = 0;
+    right.normalize();
+    const moveSpeed = 0.75;
+    let moved = false;
     if (buildControls.forward) {
       camera.position.addScaledVector(direction, moveSpeed);
+      moved = true;
     }
     if (buildControls.backward) {
       camera.position.addScaledVector(direction, -moveSpeed);
+      moved = true;
     }
     if (buildControls.left) {
       camera.position.addScaledVector(right, -moveSpeed);
+      moved = true;
     }
     if (buildControls.right) {
       camera.position.addScaledVector(right, moveSpeed);
+      moved = true;
     }
     if (buildControls.up) {
       camera.position.y += moveSpeed;
+      moved = true;
     }
     if (buildControls.down) {
       camera.position.y -= moveSpeed;
+      moved = true;
     }
-    if (!document.pointerLockElement) {
-      if (buildControls.rotateLeft) {
-        camera.rotation.y += buildRotationSpeed * deltaTime;
-      }
-      if (buildControls.rotateRight) {
-        camera.rotation.y -= buildRotationSpeed * deltaTime;
-      }
+    if (buildControls.rotateLeft) {
+      camera.rotation.y += 0.05;
+      moved = true;
     }
-    if (Math.floor(Date.now() / 1e3) % 5 === 0) {
-      console.log(`Camera position: x=${camera.position.x.toFixed(2)}, y=${camera.position.y.toFixed(2)}, z=${camera.position.z.toFixed(2)}`);
+    if (buildControls.rotateRight) {
+      camera.rotation.y -= 0.05;
+      moved = true;
+    }
+    camera.rotation.x = -0.3;
+    camera.rotation.z = 0;
+    if (moved) {
+      console.log("Camera moved to:", camera.position);
     }
   }
-  function enterBuilderMode(template) {
-    console.log(`Entering builder mode with template: ${template}`);
+  function enterBuilderMode(templateSize = "medium") {
     builderMode = true;
-    gameStarted = true;
-    courseTemplate = template;
-    currentBuilderTool = "build";
-    if (player) {
-      player.visible = false;
-    }
-    camera.position.set(0, 10, 20);
-    camera.rotation.set(0, 0, 0);
-    clearExistingBlocks();
+    buildControls = {
+      forward: false,
+      backward: false,
+      left: false,
+      right: false,
+      up: false,
+      down: false,
+      rotateLeft: false,
+      rotateRight: false
+    };
+    setupBuilderUI();
     setupBuilderEventListeners();
-    setupCourseTemplate(template);
+    createBuilderDebugUI();
+    currentBuilderTool = "build";
     selectedBlockType = "platform";
     createPlacementPreview();
-    setupBuilderUI();
-    createBuilderToolbar();
-    console.log("Builder mode initialized. First-person camera enabled.");
-    saveBuilderState();
-  }
-  function clearExistingBlocks() {
-    buildingBlocks.forEach((block) => {
-      scene.remove(block);
-    });
-    buildingBlocks = [];
-    platforms = platforms.filter((platform) => {
-      if (platform.position.y < 0.5) {
-        return true;
-      }
-      scene.remove(platform);
-      return false;
-    });
+    console.log("Entered builder mode with template:", templateSize);
   }
   function setupBuilderEventListeners() {
-    const gameContainer = document.getElementById("game-container");
-    if (!gameContainer) return;
-    gameContainer.removeEventListener("mousedown", handleBuilderMouseDown);
-    document.removeEventListener("mouseup", handleBuilderMouseUp);
-    document.removeEventListener("mousemove", handleMouseMove);
-    gameContainer.addEventListener("mousedown", handleBuilderMouseDown);
-    document.addEventListener("mouseup", handleBuilderMouseUp);
-    gameContainer.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-    });
-  }
-  function handleBuilderMouseDown(event) {
-    if (!builderMode) return;
-    event.preventDefault();
-    if (event.button === 0) {
-      if (currentBuilderTool === "build" && placementPreview) {
-        placeBlock();
-      } else if (currentBuilderTool === "remove") {
-        removeBlock();
-      }
-    } else if (event.button === 2) {
-      rightClickRotating = true;
-      document.addEventListener("mousemove", handleMouseMove);
-    }
-  }
-  function handleBuilderMouseUp(event) {
-    if (!builderMode) return;
-    if (event.button === 2) {
-      rightClickRotating = false;
-      document.removeEventListener("mousemove", handleMouseMove);
-    }
-  }
-  function handleMouseMove(event) {
-    if (!builderMode) return;
-    if (rightClickRotating || document.pointerLockElement) {
-      const movementX = event.movementX || 0;
-      camera.rotation.y -= movementX * 2e-3;
-      camera.rotation.x = 0;
-      camera.rotation.z = 0;
-      updatePlacementPreview();
-      if (Math.floor(Date.now() / 1e3) % 10 === 0) {
-        saveBuilderState();
-      }
-    }
-  }
-  function createBuilderToolbar() {
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keyup", handleKeyUp);
     const container = document.getElementById("game-container");
     if (!container) return;
-    const existingToolbar = document.getElementById("builder-toolbar");
-    if (existingToolbar) {
-      existingToolbar.remove();
-    }
-    const toolbar = document.createElement("div");
-    toolbar.id = "builder-toolbar";
-    toolbar.style.position = "absolute";
-    toolbar.style.bottom = "20px";
-    toolbar.style.left = "50%";
-    toolbar.style.transform = "translateX(-50%)";
-    toolbar.style.display = "flex";
-    toolbar.style.gap = "10px";
-    toolbar.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
-    toolbar.style.padding = "10px";
-    toolbar.style.borderRadius = "10px";
-    toolbar.style.zIndex = "1000";
-    const tools = [
-      { id: "build", icon: "\u{1F9F1}", label: "Build" },
-      { id: "remove", icon: "\u{1F5D1}\uFE0F", label: "Remove" },
-      { id: "camera", icon: "\u{1F3A5}", label: "Camera" }
-    ];
-    tools.forEach((tool) => {
-      const button = document.createElement("button");
-      button.id = `tool-${tool.id}`;
-      button.innerHTML = `<div style="font-size: 24px">${tool.icon}</div><div>${tool.label}</div>`;
-      button.style.display = "flex";
-      button.style.flexDirection = "column";
-      button.style.alignItems = "center";
-      button.style.justifyContent = "center";
-      button.style.backgroundColor = currentBuilderTool === tool.id ? "#4CAF50" : "#333";
-      button.style.color = "white";
-      button.style.border = "none";
-      button.style.borderRadius = "8px";
-      button.style.padding = "10px 15px";
-      button.style.cursor = "pointer";
-      button.style.width = "80px";
-      button.style.height = "80px";
-      button.addEventListener("click", () => {
-        currentBuilderTool = tool.id;
-        updateToolbarSelection();
-        if (placementPreview) {
-          placementPreview.visible = tool.id === "build";
-        }
-        saveBuilderState();
-      });
-      toolbar.appendChild(button);
+    camera.rotation.order = "YXZ";
+    container.addEventListener("mousedown", (event) => {
+      if (event.button === 2) {
+        isMouseDown = true;
+        lastMouseX = event.clientX;
+        lastMouseY = event.clientY;
+        event.preventDefault();
+      }
     });
-    container.appendChild(toolbar);
+    container.addEventListener("mousemove", (event) => {
+      if (!isMouseDown) return;
+      const deltaX = event.clientX - lastMouseX;
+      const deltaY = event.clientY - lastMouseY;
+      camera.rotation.y -= deltaX * 5e-3;
+      const newPitch = camera.rotation.x - deltaY * 5e-3;
+      camera.rotation.x = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, newPitch));
+      camera.rotation.z = 0;
+      lastMouseX = event.clientX;
+      lastMouseY = event.clientY;
+      event.preventDefault();
+    });
+    container.addEventListener("mouseup", (event) => {
+      if (event.button === 2) {
+        isMouseDown = false;
+        event.preventDefault();
+      }
+    });
+    container.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+    });
   }
   function updateToolbarSelection() {
     const tools = ["build", "remove", "camera"];
@@ -24558,51 +24458,6 @@ void main() {
           container.style.cursor = "default";
       }
     }
-  }
-  function setupCourseTemplate(template) {
-    createGround();
-    const killzoneGeometry = new PlaneGeometry(400, 400);
-    const killzoneMaterial = new MeshBasicMaterial({
-      color: 16711680,
-      transparent: true,
-      opacity: 0.3
-    });
-    const killzone = new Mesh(killzoneGeometry, killzoneMaterial);
-    killzone.rotation.x = -Math.PI / 2;
-    killzone.position.y = -10;
-    scene.add(killzone);
-    let size;
-    switch (template) {
-      case "small":
-        size = 50;
-        break;
-      case "large":
-        size = 150;
-        break;
-      case "medium":
-      default:
-        size = 100;
-    }
-    const startGeometry = new BoxGeometry(5, 1, 5);
-    const startMaterial = new MeshStandardMaterial({
-      color: 65280,
-      roughness: 0.7
-    });
-    const startPlatform = new Mesh(startGeometry, startMaterial);
-    startPlatform.position.set(-size / 4, 1, -size / 4);
-    startPlatform.userData = { type: "start" };
-    scene.add(startPlatform);
-    buildingBlocks.push(startPlatform);
-    const finishGeometry = new BoxGeometry(5, 1, 5);
-    const finishMaterial = new MeshStandardMaterial({
-      color: 255,
-      roughness: 0.7
-    });
-    const finishPlatform = new Mesh(finishGeometry, finishMaterial);
-    finishPlatform.position.set(size / 4, 1, size / 4);
-    finishPlatform.userData = { type: "finish" };
-    scene.add(finishPlatform);
-    buildingBlocks.push(finishPlatform);
   }
   function createPlacementPreview() {
     if (placementPreview) {
@@ -24666,67 +24521,6 @@ void main() {
       placementPreview.position.z = Math.round(placementPreview.position.z);
     }
   }
-  function placeBlock() {
-    if (!placementPreview) return;
-    let geometry, material;
-    switch (selectedBlockType) {
-      case "start":
-        geometry = new BoxGeometry(5, 1, 5);
-        material = new MeshStandardMaterial({
-          color: 65280,
-          roughness: 0.7
-        });
-        break;
-      case "finish":
-        geometry = new BoxGeometry(5, 1, 5);
-        material = new MeshStandardMaterial({
-          color: 255,
-          roughness: 0.7
-        });
-        break;
-      case "platform":
-      default:
-        geometry = new BoxGeometry(3, 1, 3);
-        material = new MeshStandardMaterial({
-          color: 13421772,
-          roughness: 0.7
-        });
-    }
-    const block = new Mesh(geometry, material);
-    block.position.copy(placementPreview.position);
-    block.userData = { type: selectedBlockType };
-    block.castShadow = true;
-    block.receiveShadow = true;
-    scene.add(block);
-    buildingBlocks.push(block);
-    platforms.push(block);
-    console.log(`Placed ${selectedBlockType} block at position: `, block.position);
-  }
-  function removeBlock() {
-    if (!placementPreview) return;
-    let closestIndex = -1;
-    let minDistance = Infinity;
-    for (let i = 0; i < buildingBlocks.length; i++) {
-      const block = buildingBlocks[i];
-      if (placementPreview) {
-        const distance = block.position.distanceTo(placementPreview.position);
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestIndex = i;
-        }
-      }
-    }
-    if (closestIndex !== -1 && minDistance < 5) {
-      const blockToRemove = buildingBlocks[closestIndex];
-      scene.remove(blockToRemove);
-      buildingBlocks.splice(closestIndex, 1);
-      const platformIndex = platforms.indexOf(blockToRemove);
-      if (platformIndex !== -1) {
-        platforms.splice(platformIndex, 1);
-      }
-      console.log(`Removed block at position: ${blockToRemove.position.x}, ${blockToRemove.position.y}, ${blockToRemove.position.z}`);
-    }
-  }
   function setupBuilderUI() {
     const container = document.getElementById("game-container");
     if (!container) return;
@@ -24737,7 +24531,7 @@ void main() {
     const builderUI = document.createElement("div");
     builderUI.id = "builder-ui";
     builderUI.style.position = "absolute";
-    builderUI.style.top = "10px";
+    builderUI.style.top = "80px";
     builderUI.style.left = "10px";
     builderUI.style.display = "flex";
     builderUI.style.flexDirection = "column";
@@ -24747,6 +24541,7 @@ void main() {
     builderUI.style.padding = "15px";
     builderUI.style.borderRadius = "8px";
     builderUI.style.zIndex = "100";
+    builderUI.style.maxWidth = "250px";
     const title = document.createElement("h2");
     title.textContent = "Course Builder";
     title.style.margin = "0 0 10px 0";
@@ -24822,15 +24617,16 @@ void main() {
     instructions.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
     instructions.style.padding = "10px";
     instructions.style.borderRadius = "4px";
-    instructions.style.maxWidth = "300px";
+    instructions.style.maxWidth = "220px";
     instructions.innerHTML = `
     <h3 style="margin: 0 0 5px 0">Builder Controls:</h3>
     <p style="margin: 2px 0">WASD - Move horizontally</p>
     <p style="margin: 2px 0">Q/E - Move up/down</p>
+    <p style="margin: 2px 0">Arrow Left/Right - Rotate camera</p>
     <p style="margin: 2px 0">Right-click + drag - Look around</p>
-    <p style="margin: 2px 0">Left Click - Place block or remove (based on selected tool)</p>
-    <p style="margin: 2px 0">Use toolbar at bottom to switch tools</p>
-    <p style="margin: 2px 0; color: #ffeb3b">Your course must have both start and finish blocks!</p>
+    <p style="margin: 2px 0">Left Click - Place block</p>
+    <p style="margin: 2px 0">Use toolbar for tools</p>
+    <p style="margin: 2px 0; color: #ffeb3b">Need start and finish blocks!</p>
   `;
     builderUI.appendChild(instructions);
     const counterContainer = document.createElement("div");
@@ -25048,6 +24844,7 @@ void main() {
     camera.position.set(0, 5, 10);
     camera.rotation.set(0, 0, 0);
     localStorage.removeItem("builderState");
+    localStorage.removeItem("builderTemplate");
     window.parent.postMessage({
       type: "menuRequest",
       data: { menu: "main" }
@@ -25074,45 +24871,40 @@ void main() {
     localStorage.setItem("builderState", JSON.stringify(state));
     localStorage.setItem("builderTemplate", courseTemplate);
   }
-  function loadBuilderState() {
-    const stateStr = localStorage.getItem("builderState");
-    if (stateStr) {
-      try {
-        const state = JSON.parse(stateStr);
-        if (state.isBuilderMode) {
-          enterBuilderMode(state.template || "medium");
-          if (state.cameraPosition) {
-            camera.position.set(
-              state.cameraPosition.x,
-              state.cameraPosition.y,
-              state.cameraPosition.z
-            );
-          }
-          if (state.cameraRotation) {
-            camera.rotation.set(
-              0,
-              // Force x rotation to 0 (horizontal view)
-              state.cameraRotation.y,
-              0
-              // Force z rotation to 0
-            );
-          }
-          if (state.selectedTool) {
-            currentBuilderTool = state.selectedTool;
-            updateToolbarSelection();
-          }
-          if (state.selectedBlockType) {
-            selectedBlockType = state.selectedBlockType;
-            createPlacementPreview();
-          }
-          console.log("Builder state restored from localStorage");
-        }
-      } catch (error) {
-        console.error("Error loading builder state:", error);
-        localStorage.removeItem("builderState");
-        localStorage.removeItem("builderTemplate");
+  function createBuilderDebugUI() {
+    const container = document.getElementById("game-container");
+    if (!container) return;
+    const debugUI = document.createElement("div");
+    debugUI.id = "builder-debug";
+    debugUI.style.position = "absolute";
+    debugUI.style.top = "10px";
+    debugUI.style.right = "10px";
+    debugUI.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
+    debugUI.style.color = "white";
+    debugUI.style.padding = "10px";
+    debugUI.style.borderRadius = "5px";
+    debugUI.style.fontFamily = "monospace";
+    debugUI.style.zIndex = "1000";
+    debugUI.style.maxWidth = "180px";
+    container.appendChild(debugUI);
+    setInterval(() => {
+      if (!builderMode) {
+        debugUI.remove();
+        return;
       }
-    }
+      debugUI.innerHTML = `
+      <div style="font-weight:bold;">Builder Controls:</div>
+      <div>W (Forward): ${buildControls.forward}</div>
+      <div>S (Back): ${buildControls.backward}</div>
+      <div>A (Left): ${buildControls.left}</div>
+      <div>D (Right): ${buildControls.right}</div>
+      <div>Q (Up): ${buildControls.up}</div>
+      <div>E (Down): ${buildControls.down}</div>
+      <div>\u2190 (Rotate L): ${buildControls.rotateLeft}</div>
+      <div>\u2192 (Rotate R): ${buildControls.rotateRight}</div>
+      <div style="margin-top:5px;font-size:11px;">Pos: ${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}</div>
+    `;
+    }, 100);
   }
   console.log("app.js loaded");
   init();

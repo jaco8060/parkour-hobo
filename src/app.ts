@@ -66,6 +66,11 @@ let keyState = {
 // Flag to track if we're placing blocks to avoid conflicts
 let isPlacingBlock = false;
 
+// Add these variables at the top with other state variables
+let isMouseDown = false;
+let lastMouseX = 0;
+let lastMouseY = 0;
+
 // Initialize the game
 function init() {
   console.log("Initializing Three.js scene...");
@@ -111,14 +116,25 @@ function init() {
   // Create ground
   createGround();
   
-  // Create city environment
-  createCityEnvironment();
+  // Don't create city environment if we're going straight to builder mode
+  if (!window.location.search.includes('builder=true')) {
+    createCityEnvironment();
+  }
   
   // Load player character
   loadPlayerCharacter();
   
   // Setup event listeners
-  setupEventListeners();
+  console.log("Setting up global event listeners");
+  document.addEventListener("keydown", (event) => {
+    console.log("Raw keydown event:", event.key);
+    handleKeyDown(event);
+  });
+  document.addEventListener("keyup", (event) => {
+    console.log("Raw keyup event:", event.key);
+    handleKeyUp(event);
+  });
+  window.addEventListener("resize", handleResize);
   
   // Create mobile controls if on mobile
   if (isMobile) {
@@ -132,15 +148,13 @@ function init() {
   window.parent.postMessage({ type: "webViewReady" }, "*");
   console.log("Sent webViewReady message");
   
-  // Load saved builder state from localStorage if available
-  loadBuilderState();
+  // Clear any existing builder state
+  localStorage.removeItem('builderState');
+  localStorage.removeItem('builderTemplate');
   
-  // Start in builder mode by default if no saved state
-  if (!builderMode) {
-    // Get saved template from localStorage or use default
-    const savedTemplate = localStorage.getItem('builderTemplate') || "medium";
-    enterBuilderMode(savedTemplate);
-  }
+  // Start in builder mode directly to fix issue
+  console.log("Starting in builder mode");
+  enterBuilderMode("medium");
 }
 
 function setupLighting() {
@@ -352,120 +366,156 @@ function setupEventListeners() {
 }
 
 function handleKeyDown(event: KeyboardEvent) {
-  if (builderMode) {
-    switch (event.key.toLowerCase()) {
-      case "w":
-        buildControls.forward = true;
-        break;
-      case "s":
-        buildControls.backward = true;
-        break;
-      case "a":
-        buildControls.left = true;
-        break;
-      case "d":
-        buildControls.right = true;
-        break;
-      case "q":
-        buildControls.up = true;
-        break;
-      case "e":
-        buildControls.down = true;
-        break;
-      case "arrowleft":
-        buildControls.rotateLeft = true;
-        break;
-      case "arrowright":
-        buildControls.rotateRight = true;
-        break;
-      case "1":
-        selectedBlockType = "platform";
-        createPlacementPreview();
-        break;
-      case "2":
-        selectedBlockType = "start";
-        createPlacementPreview();
-        break;
-      case "3":
-        selectedBlockType = "finish";
-        createPlacementPreview();
-        break;
-      case "enter":
-        saveCourse();
-        break;
-      case "escape":
-        exitBuilderMode();
-        break;
-    }
-  } else {
+  if (!builderMode) {
     // Regular game controls
     switch (event.key.toLowerCase()) {
+      case "w": keyState.forward = true; break;
+      case "s": keyState.backward = true; break;
+      case "a": keyState.left = true; break;
+      case "d": keyState.right = true; break;
+      case " ": keyState.jump = true; break;
+    }
+    return;
+  }
+  
+  // Prevent default behavior for builder mode keys
+  event.preventDefault();
+  
+  // Builder mode controls
+  const key = event.key.toLowerCase();
+  let controlChanged = false;
+  
+  switch(key) {
       case "w":
-        keyState.forward = true;
+      if (!buildControls.forward) {
+        buildControls.forward = true;
+        controlChanged = true;
+      }
         break;
       case "s":
-        keyState.backward = true;
+      if (!buildControls.backward) {
+        buildControls.backward = true;
+        controlChanged = true;
+      }
         break;
       case "a":
-        keyState.left = true;
+      if (!buildControls.left) {
+        buildControls.left = true;
+        controlChanged = true;
+      }
         break;
       case "d":
-        keyState.right = true;
+      if (!buildControls.right) {
+        buildControls.right = true;
+        controlChanged = true;
+      }
         break;
-      case " ":
-        keyState.jump = true;
+    case "q":
+      if (!buildControls.up) {
+        buildControls.up = true;
+        controlChanged = true;
+        }
         break;
-    }
+    case "e":
+      if (!buildControls.down) {
+        buildControls.down = true;
+        controlChanged = true;
+      }
+      break;
+    case "arrowleft":
+      if (!buildControls.rotateLeft) {
+        buildControls.rotateLeft = true;
+        controlChanged = true;
+      }
+      break;
+    case "arrowright":
+      if (!buildControls.rotateRight) {
+        buildControls.rotateRight = true;
+        controlChanged = true;
+      }
+      break;
+  }
+  
+  // Only log if a control actually changed
+  if (controlChanged) {
+    console.log(`Key pressed: ${key}, Controls:`, {...buildControls});
   }
 }
 
 function handleKeyUp(event: KeyboardEvent) {
-  if (builderMode) {
-    switch (event.key.toLowerCase()) {
-      case "w":
-        buildControls.forward = false;
-        break;
-      case "s":
-        buildControls.backward = false;
-        break;
-      case "a":
-        buildControls.left = false;
-        break;
-      case "d":
-        buildControls.right = false;
-        break;
-      case "q":
-        buildControls.up = false;
-        break;
-      case "e":
-        buildControls.down = false;
-        break;
-      case "arrowleft":
-        buildControls.rotateLeft = false;
-        break;
-      case "arrowright":
-        buildControls.rotateRight = false;
-        break;
-    }
-  } else {
+  if (!builderMode) {
     // Regular game controls
     switch (event.key.toLowerCase()) {
-      case "w":
-        keyState.forward = false;
-        break;
-      case "s":
-        keyState.backward = false;
-        break;
-      case "a":
-        keyState.left = false;
-        break;
-      case "d":
-        keyState.right = false;
-        break;
-      case " ":
-        keyState.jump = false;
-        break;
+      case "w": keyState.forward = false; break;
+      case "s": keyState.backward = false; break;
+      case "a": keyState.left = false; break;
+      case "d": keyState.right = false; break;
+      case " ": keyState.jump = false; break;
     }
+    return;
+  }
+  
+  // Prevent default behavior for builder mode keys
+  event.preventDefault();
+  
+  // Builder mode controls
+  const key = event.key.toLowerCase();
+  let controlChanged = false;
+  
+  switch(key) {
+    case "w":
+      if (buildControls.forward) {
+        buildControls.forward = false;
+        controlChanged = true;
+      }
+      break;
+    case "s":
+      if (buildControls.backward) {
+        buildControls.backward = false;
+        controlChanged = true;
+      }
+      break;
+    case "a":
+      if (buildControls.left) {
+        buildControls.left = false;
+        controlChanged = true;
+      }
+      break;
+    case "d":
+      if (buildControls.right) {
+        buildControls.right = false;
+        controlChanged = true;
+      }
+      break;
+    case "q":
+      if (buildControls.up) {
+        buildControls.up = false;
+        controlChanged = true;
+      }
+      break;
+    case "e":
+      if (buildControls.down) {
+        buildControls.down = false;
+        controlChanged = true;
+      }
+      break;
+    case "arrowleft":
+      if (buildControls.rotateLeft) {
+        buildControls.rotateLeft = false;
+        controlChanged = true;
+      }
+      break;
+    case "arrowright":
+      if (buildControls.rotateRight) {
+        buildControls.rotateRight = false;
+        controlChanged = true;
+      }
+      break;
+  }
+  
+  // Only log if a control actually changed
+  if (controlChanged) {
+    console.log(`Key released: ${key}, Controls:`, {...buildControls});
   }
 }
 
@@ -695,7 +745,7 @@ function updatePlayer(deltaTime: number) {
     player.position.y = intersects[0].point.y + 1;
     playerState.onGround = true;
     playerState.jumping = false;
-  } else {
+    } else {
     playerState.onGround = false;
   }
   
@@ -810,95 +860,96 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-// Handle builder camera movement
+// Update the builder camera movement function
 function updateBuilderCamera(deltaTime: number) {
   if (!builderMode) return;
   
   // Get camera direction and right vector based on camera rotation
   const direction = new THREE.Vector3(0, 0, -1);
   direction.applyQuaternion(camera.quaternion);
+  direction.y = 0; // Keep movement horizontal
+  direction.normalize();
   
   const right = new THREE.Vector3(1, 0, 0);
   right.applyQuaternion(camera.quaternion);
+  right.y = 0; // Keep movement horizontal
+  right.normalize();
   
-  // Movement based on controls
-  const moveSpeed = buildCameraSpeed * deltaTime;
+  const moveSpeed = 0.75; // Keep increased speed
+  let moved = false;
   
+  // Handle keyboard movement
   if (buildControls.forward) {
     camera.position.addScaledVector(direction, moveSpeed);
+    moved = true;
   }
   if (buildControls.backward) {
     camera.position.addScaledVector(direction, -moveSpeed);
+    moved = true;
   }
   if (buildControls.left) {
     camera.position.addScaledVector(right, -moveSpeed);
+    moved = true;
   }
   if (buildControls.right) {
     camera.position.addScaledVector(right, moveSpeed);
+    moved = true;
   }
   if (buildControls.up) {
     camera.position.y += moveSpeed;
+    moved = true;
   }
   if (buildControls.down) {
     camera.position.y -= moveSpeed;
+    moved = true;
   }
   
-  // Keyboard rotation if not using mouse (pointer lock)
-  if (!document.pointerLockElement) {
-    if (buildControls.rotateLeft) {
-      camera.rotation.y += buildRotationSpeed * deltaTime;
-    }
-    if (buildControls.rotateRight) {
-      camera.rotation.y -= buildRotationSpeed * deltaTime;
-    }
+  // Handle keyboard rotation
+  if (buildControls.rotateLeft) {
+    camera.rotation.y += 0.05;
+    moved = true;
+  }
+  if (buildControls.rotateRight) {
+    camera.rotation.y -= 0.05;
+    moved = true;
   }
   
-  // Log camera position periodically for debugging
-  if (Math.floor(Date.now() / 1000) % 5 === 0) {
-    console.log(`Camera position: x=${camera.position.x.toFixed(2)}, y=${camera.position.y.toFixed(2)}, z=${camera.position.z.toFixed(2)}`);
+  // Ensure camera maintains proper orientation
+  camera.rotation.x = -0.3; // Keep slight downward angle
+  camera.rotation.z = 0;    // Keep level
+  
+  if (moved) {
+    console.log("Camera moved to:", camera.position);
   }
 }
 
-// Function to enter builder mode
-function enterBuilderMode(template: string) {
-  console.log(`Entering builder mode with template: ${template}`);
+// Update the enter builder mode function
+function enterBuilderMode(templateSize: string = "medium") {
   builderMode = true;
-  gameStarted = true; // Set gameStarted to true to enable controls
-  courseTemplate = template;
-  currentBuilderTool = "build"; // Default to build tool
   
-  // Hide player
-  if (player) {
-    player.visible = false;
-  }
+  // Reset all controls
+  buildControls = {
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+    up: false,
+    down: false,
+    rotateLeft: false,
+    rotateRight: false
+  };
   
-  // Set camera to look straight ahead horizontally
-  camera.position.set(0, 10, 20);
-  camera.rotation.set(0, 0, 0); // Perfectly horizontal view
-  
-  // Clear existing blocks if needed
-  clearExistingBlocks();
-  
-  // Setup event listeners for builder mode
+  // Setup UI and event listeners
+  setupBuilderUI();
   setupBuilderEventListeners();
+  createBuilderDebugUI();
   
-  // Create template blocks based on selected size
-  setupCourseTemplate(template);
-  
-  // Create placement preview
+  // Initialize builder state
+  currentBuilderTool = "build";
   selectedBlockType = "platform";
   createPlacementPreview();
   
-  // Setup UI
-  setupBuilderUI();
-  
-  // Create toolbar
-  createBuilderToolbar();
-  
-  console.log("Builder mode initialized. First-person camera enabled.");
-  
-  // Save the state
-  saveBuilderState();
+  console.log("Entered builder mode with template:", templateSize);
 }
 
 // Function to clear existing blocks
@@ -921,78 +972,59 @@ function clearExistingBlocks() {
 
 // Setup event listeners specifically for builder mode
 function setupBuilderEventListeners() {
-  const gameContainer = document.getElementById("game-container");
-  if (!gameContainer) return;
+  // Keyboard events should be on document
+  document.addEventListener('keydown', handleKeyDown);
+  document.addEventListener('keyup', handleKeyUp);
   
-  // Remove any existing handlers to avoid duplicates
-  gameContainer.removeEventListener("mousedown", handleBuilderMouseDown);
-  document.removeEventListener("mouseup", handleBuilderMouseUp);
-  document.removeEventListener("mousemove", handleMouseMove);
+  // Mouse events should be on the game container
+  const container = document.getElementById("game-container");
+  if (!container) return;
   
-  // Add event listeners for builder mode
-  gameContainer.addEventListener("mousedown", handleBuilderMouseDown);
-  document.addEventListener("mouseup", handleBuilderMouseUp);
+  // Set camera's euler order to YXZ to prevent gimbal lock and maintain proper rotation
+  camera.rotation.order = "YXZ";
   
-  // Prevent context menu on right-click
-  gameContainer.addEventListener("contextmenu", (event) => {
-    event.preventDefault();
-  });
-}
-
-// Handle mouse down events in builder mode
-function handleBuilderMouseDown(event: MouseEvent) {
-  if (!builderMode) return;
-  
-  event.preventDefault();
-  
-  if (event.button === 0) { // Left click
-    // Only place blocks if the build tool is selected
-    if (currentBuilderTool === "build" && placementPreview) {
-      placeBlock();
-    } else if (currentBuilderTool === "remove") {
-      removeBlock();
+  // Mouse controls for camera rotation
+  container.addEventListener('mousedown', (event) => {
+    if (event.button === 2) { // Right click
+      isMouseDown = true;
+      lastMouseX = event.clientX;
+      lastMouseY = event.clientY;
+      event.preventDefault();
     }
-  } else if (event.button === 2) { // Right click
-    // Start camera rotation
-    rightClickRotating = true;
-    document.addEventListener("mousemove", handleMouseMove);
-  }
-}
-
-// Handle mouse up events in builder mode
-function handleBuilderMouseUp(event: MouseEvent) {
-  if (!builderMode) return;
+  });
   
-  if (event.button === 2) { // Right click release
-    // Stop camera rotation
-    rightClickRotating = false;
-    document.removeEventListener("mousemove", handleMouseMove);
-  }
-}
-
-// Handle mouse movement for camera rotation in builder mode
-function handleMouseMove(event: MouseEvent) {
-  if (!builderMode) return;
-  
-  // Only rotate if right click is pressed or in pointerlock mode
-  if (rightClickRotating || document.pointerLockElement) {
-    const movementX = event.movementX || 0;
+  container.addEventListener('mousemove', (event) => {
+    if (!isMouseDown) return;
     
-    // Only rotate horizontally (around y-axis)
-    camera.rotation.y -= movementX * 0.002;
+    const deltaX = event.clientX - lastMouseX;
+    const deltaY = event.clientY - lastMouseY;
     
-    // Force camera to remain perfectly horizontal (no vertical rotation)
-    camera.rotation.x = 0;
+    // Rotate horizontally (yaw)
+    camera.rotation.y -= deltaX * 0.005;
+    
+    // Rotate vertically (pitch) with limits
+    const newPitch = camera.rotation.x - deltaY * 0.005;
+    camera.rotation.x = Math.max(-Math.PI/3, Math.min(Math.PI/3, newPitch)); // Limit to about 60 degrees up/down
+    
+    // Keep camera level (no roll)
     camera.rotation.z = 0;
     
-    // Update placement preview position after camera rotation
-    updatePlacementPreview();
-    
-    // Save state periodically
-    if (Math.floor(Date.now() / 1000) % 10 === 0) {
-      saveBuilderState();
+    lastMouseX = event.clientX;
+    lastMouseY = event.clientY;
+    event.preventDefault();
+  });
+  
+  container.addEventListener('mouseup', (event) => {
+    if (event.button === 2) {
+      isMouseDown = false;
+      event.preventDefault();
     }
-  }
+  });
+  
+  // Prevent context menu on right click
+  container.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+  });
 }
 
 // Create a toolbar UI at the bottom of the screen
@@ -1096,6 +1128,9 @@ function updateToolbarSelection() {
 
 // Function to set up course template
 function setupCourseTemplate(template: string) {
+  // Clear any existing environment
+  clearEnvironment();
+  
   // Create a ground plane
   createGround();
   
@@ -1125,6 +1160,9 @@ function setupCourseTemplate(template: string) {
       size = 100;
   }
   
+  // Add visual boundaries to show template size
+  addTemplateBoundaryMarkers(size);
+  
   // Start platform (green)
   const startGeometry = new THREE.BoxGeometry(5, 1, 5);
   const startMaterial = new THREE.MeshStandardMaterial({ 
@@ -1148,6 +1186,74 @@ function setupCourseTemplate(template: string) {
   finishPlatform.userData = { type: "finish" };
   scene.add(finishPlatform);
   buildingBlocks.push(finishPlatform);
+}
+
+// Add a new function to clear the environment
+function clearEnvironment() {
+  // Remove objects from the scene that aren't essential
+  const objectsToKeep = ["Ground", "Light"];
+  
+  const objectsToRemove: THREE.Mesh[] = [];
+  scene.children.forEach(child => {
+    if (child instanceof THREE.Mesh && !objectsToKeep.includes(child.name)) {
+      objectsToRemove.push(child);
+    }
+  });
+  
+  objectsToRemove.forEach(obj => {
+    scene.remove(obj);
+  });
+}
+
+// Add a new function to create boundary markers to visualize template size
+function addTemplateBoundaryMarkers(size: number) {
+  // Create corner markers to show template boundaries
+  const cornerSize = 2;
+  const cornerHeight = 10;
+  const cornerGeometry = new THREE.BoxGeometry(cornerSize, cornerHeight, cornerSize);
+  const cornerMaterial = new THREE.MeshStandardMaterial({ color: 0xffa500 });
+  
+  // Create corners at the template boundaries
+  const halfSize = size / 2;
+  const corners = [
+    { x: -halfSize, z: -halfSize },
+    { x: halfSize, z: -halfSize },
+    { x: -halfSize, z: halfSize },
+    { x: halfSize, z: halfSize }
+  ];
+  
+  corners.forEach(corner => {
+    const cornerMarker = new THREE.Mesh(cornerGeometry, cornerMaterial);
+    cornerMarker.position.set(corner.x, cornerHeight/2, corner.z);
+    cornerMarker.castShadow = true;
+    cornerMarker.userData = { type: "boundary" };
+    scene.add(cornerMarker);
+  });
+  
+  // Add grid lines to show size
+  const gridMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.3, transparent: true });
+  
+  // Create horizontal grid lines
+  for (let i = -halfSize; i <= halfSize; i += 10) {
+    const points = [
+      new THREE.Vector3(-halfSize, 0.1, i),
+      new THREE.Vector3(halfSize, 0.1, i)
+    ];
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.Line(geometry, gridMaterial);
+    scene.add(line);
+  }
+  
+  // Create vertical grid lines
+  for (let i = -halfSize; i <= halfSize; i += 10) {
+    const points = [
+      new THREE.Vector3(i, 0.1, -halfSize),
+      new THREE.Vector3(i, 0.1, halfSize)
+    ];
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.Line(geometry, gridMaterial);
+    scene.add(line);
+  }
 }
 
 // Create a preview of the block to be placed
@@ -1331,11 +1437,11 @@ function setupBuilderUI() {
     existingUI.remove();
   }
   
-  // Create UI container
+  // Create UI container - moved to left side with better spacing
   const builderUI = document.createElement("div");
   builderUI.id = "builder-ui";
   builderUI.style.position = "absolute";
-  builderUI.style.top = "10px";
+  builderUI.style.top = "80px"; // Moved down to avoid overlap with debug UI
   builderUI.style.left = "10px";
   builderUI.style.display = "flex";
   builderUI.style.flexDirection = "column";
@@ -1345,6 +1451,7 @@ function setupBuilderUI() {
   builderUI.style.padding = "15px";
   builderUI.style.borderRadius = "8px";
   builderUI.style.zIndex = "100";
+  builderUI.style.maxWidth = "250px"; // Limit width
   
   // Title
   const title = document.createElement("h2");
@@ -1440,21 +1547,22 @@ function setupBuilderUI() {
   
   builderUI.appendChild(exitButton);
   
-  // Instructions
+  // Instructions - Updated to include arrows for rotation
   const instructions = document.createElement("div");
   instructions.className = "control-instructions";
   instructions.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
   instructions.style.padding = "10px";
   instructions.style.borderRadius = "4px";
-  instructions.style.maxWidth = "300px";
+  instructions.style.maxWidth = "220px";
   instructions.innerHTML = `
     <h3 style="margin: 0 0 5px 0">Builder Controls:</h3>
     <p style="margin: 2px 0">WASD - Move horizontally</p>
     <p style="margin: 2px 0">Q/E - Move up/down</p>
+    <p style="margin: 2px 0">Arrow Left/Right - Rotate camera</p>
     <p style="margin: 2px 0">Right-click + drag - Look around</p>
-    <p style="margin: 2px 0">Left Click - Place block or remove (based on selected tool)</p>
-    <p style="margin: 2px 0">Use toolbar at bottom to switch tools</p>
-    <p style="margin: 2px 0; color: #ffeb3b">Your course must have both start and finish blocks!</p>
+    <p style="margin: 2px 0">Left Click - Place block</p>
+    <p style="margin: 2px 0">Use toolbar for tools</p>
+    <p style="margin: 2px 0; color: #ffeb3b">Need start and finish blocks!</p>
   `;
   
   builderUI.appendChild(instructions);
@@ -1735,6 +1843,7 @@ function exitBuilderMode() {
   
   // Clear saved builder state
   localStorage.removeItem('builderState');
+  localStorage.removeItem('builderTemplate');
   
   // Send message to parent to return to main menu
   window.parent.postMessage({
@@ -1819,6 +1928,48 @@ function loadBuilderState() {
       localStorage.removeItem('builderTemplate');
     }
   }
+}
+
+// Update the debug UI to include rotation controls
+function createBuilderDebugUI() {
+  const container = document.getElementById("game-container");
+  if (!container) return;
+  
+  const debugUI = document.createElement("div");
+  debugUI.id = "builder-debug";
+  debugUI.style.position = "absolute";
+  debugUI.style.top = "10px";
+  debugUI.style.right = "10px";
+  debugUI.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
+  debugUI.style.color = "white";
+  debugUI.style.padding = "10px";
+  debugUI.style.borderRadius = "5px";
+  debugUI.style.fontFamily = "monospace";
+  debugUI.style.zIndex = "1000";
+  debugUI.style.maxWidth = "180px";
+  
+  container.appendChild(debugUI);
+  
+  // Update debug info every 100ms
+  setInterval(() => {
+    if (!builderMode) {
+      debugUI.remove();
+      return;
+    }
+    
+    debugUI.innerHTML = `
+      <div style="font-weight:bold;">Builder Controls:</div>
+      <div>W (Forward): ${buildControls.forward}</div>
+      <div>S (Back): ${buildControls.backward}</div>
+      <div>A (Left): ${buildControls.left}</div>
+      <div>D (Right): ${buildControls.right}</div>
+      <div>Q (Up): ${buildControls.up}</div>
+      <div>E (Down): ${buildControls.down}</div>
+      <div>← (Rotate L): ${buildControls.rotateLeft}</div>
+      <div>→ (Rotate R): ${buildControls.rotateRight}</div>
+      <div style="margin-top:5px;font-size:11px;">Pos: ${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}</div>
+    `;
+  }, 100);
 }
 
 // Initialize the game
