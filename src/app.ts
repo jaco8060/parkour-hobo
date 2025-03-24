@@ -47,8 +47,9 @@ let playerState = {
   onGround: true,
   jumping: false,
   speed: 5,
-  jumpPower: 10,
+  jumpPower: 15,
   gravity: 20,
+  fallGravity: 35, // Higher gravity when falling
   currentAnimation: "idle"
 };
 
@@ -58,7 +59,9 @@ let keyState = {
   backward: false,
   left: false,
   right: false,
-  jump: false
+  jump: false,
+  rotateLeft: false,
+  rotateRight: false
 };
 
 // Flag to track if we're placing blocks to avoid conflicts
@@ -71,6 +74,10 @@ let lastMouseY = 0;
 
 // Add overlay state
 let isOverlayActive = false;
+
+// Add a camera rotation angle to state variables
+let cameraRotationAngle = 0;
+let cameraRotationSpeed = 2.0; // Rotation speed in radians per second
 
 // Initialize the game
 function init() {
@@ -405,11 +412,11 @@ function handleKeyDown(event: KeyboardEvent) {
   if (!builderMode) {
     // Regular game controls
     switch (event.key.toLowerCase()) {
-      case "w": keyState.forward = true; break;
-      case "s": keyState.backward = true; break;
-      case "a": keyState.left = true; break;
-      case "d": keyState.right = true; break;
-      case " ": keyState.jump = true; break;
+      case "w": keyState.forward = true; event.preventDefault(); break;
+      case "s": keyState.backward = true; event.preventDefault(); break;
+      case "a": keyState.rotateLeft = true; event.preventDefault(); break;
+      case "d": keyState.rotateRight = true; event.preventDefault(); break;
+      case " ": keyState.jump = true; event.preventDefault(); break;
     }
     return;
   }
@@ -487,8 +494,8 @@ function handleKeyUp(event: KeyboardEvent) {
     switch (event.key.toLowerCase()) {
       case "w": keyState.forward = false; break;
       case "s": keyState.backward = false; break;
-      case "a": keyState.left = false; break;
-      case "d": keyState.right = false; break;
+      case "a": keyState.rotateLeft = false; break;
+      case "d": keyState.rotateRight = false; break;
       case " ": keyState.jump = false; break;
     }
     return;
@@ -711,39 +718,36 @@ function updatePlayer(deltaTime: number) {
   // Movement direction based on input
   const moveDirection = new THREE.Vector3(0, 0, 0);
   
+  // Handle camera rotation - update rotation angle
+  if (keyState.rotateLeft) {
+    cameraRotationAngle += cameraRotationSpeed * deltaTime;
+  }
+  if (keyState.rotateRight) {
+    cameraRotationAngle -= cameraRotationSpeed * deltaTime;
+  }
+  
   // Get camera direction for movement relative to camera
   const cameraDirection = new THREE.Vector3();
   camera.getWorldDirection(cameraDirection);
   cameraDirection.y = 0;
   cameraDirection.normalize();
   
-  // Calculate right vector
+  // Calculate right vector - FIX: ensure right is properly calculated
   const right = new THREE.Vector3();
   right.crossVectors(new THREE.Vector3(0, 1, 0), cameraDirection).normalize();
   
-  // Apply input
+  // Apply input for forward/backward movement only
   if (keyState.forward) {
     moveDirection.add(cameraDirection);
   }
   if (keyState.backward) {
     moveDirection.sub(cameraDirection);
   }
-  if (keyState.left) {
-    moveDirection.add(right);
-  }
-  if (keyState.right) {
-    moveDirection.sub(right);
-  }
+  // We're no longer using left/right for movement
   
   // Normalize movement direction if not zero
   if (moveDirection.lengthSq() > 0) {
     moveDirection.normalize();
-    
-    // Rotate player to face movement direction
-    if (moveDirection.length() > 0) {
-      const targetRotation = Math.atan2(moveDirection.x, moveDirection.z);
-      player.rotation.y = targetRotation;
-    }
     
     // Apply movement speed
     moveDirection.multiplyScalar(playerState.speed * deltaTime);
@@ -751,16 +755,22 @@ function updatePlayer(deltaTime: number) {
     // Update position with horizontal movement
     player.position.x += moveDirection.x;
     player.position.z += moveDirection.z;
+    
+    // Rotate player to face movement direction (only if actually moving)
+    const targetRotation = Math.atan2(moveDirection.x, moveDirection.z);
+    player.rotation.y = targetRotation;
   }
   
-  // Apply gravity
-  playerState.velocity.y -= playerState.gravity * deltaTime;
+  // Apply gravity - use higher gravity when falling
+  const currentGravity = playerState.velocity.y < 0 ? playerState.fallGravity : playerState.gravity;
+  playerState.velocity.y -= currentGravity * deltaTime;
   
   // Apply jump if on ground
   if (keyState.jump && playerState.onGround) {
     playerState.velocity.y = playerState.jumpPower;
     playerState.onGround = false;
     playerState.jumping = true;
+    console.log("Player jumped with velocity:", playerState.velocity.y);
   }
   
   // Apply vertical velocity
@@ -809,13 +819,19 @@ function updatePlayer(deltaTime: number) {
 function updateCamera() {
   if (!player) return;
   
-  // Position camera behind player
-  const idealOffset = new THREE.Vector3(-5, 5, -5);
-  idealOffset.applyQuaternion(player.quaternion);
-  idealOffset.add(player.position);
+  // Calculate camera position on a circle around the player
+  const cameraDistance = 7; // Distance from player
+  const cameraHeight = 5;   // Height above player
   
-  // Smoothly move camera to follow player
-  camera.position.lerp(idealOffset, 0.1);
+  // Calculate new camera position based on angle
+  const cameraX = player.position.x + cameraDistance * Math.sin(cameraRotationAngle);
+  const cameraZ = player.position.z + cameraDistance * Math.cos(cameraRotationAngle);
+  
+  // Set target position
+  const targetPosition = new THREE.Vector3(cameraX, player.position.y + cameraHeight, cameraZ);
+  
+  // Smoothly move camera to new position
+  camera.position.lerp(targetPosition, 0.1);
   
   // Look at player
   camera.lookAt(player.position);
@@ -1898,8 +1914,9 @@ function exitBuilderMode() {
     onGround: true,
     jumping: false,
     speed: 5,
-    jumpPower: 10,
+    jumpPower: 15,
     gravity: 20,
+    fallGravity: 35, // Higher gravity when falling
     currentAnimation: "idle"
   };
   
@@ -2121,7 +2138,9 @@ function resetAllControls() {
     backward: false,
     left: false,
     right: false,
-    jump: false
+    jump: false,
+    rotateLeft: false,
+    rotateRight: false
   };
   
   // Reset mouse state

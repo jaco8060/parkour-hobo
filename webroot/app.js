@@ -23814,8 +23814,10 @@ void main() {
     onGround: true,
     jumping: false,
     speed: 5,
-    jumpPower: 10,
+    jumpPower: 15,
     gravity: 20,
+    fallGravity: 35,
+    // Higher gravity when falling
     currentAnimation: "idle"
   };
   var keyState = {
@@ -23823,12 +23825,16 @@ void main() {
     backward: false,
     left: false,
     right: false,
-    jump: false
+    jump: false,
+    rotateLeft: false,
+    rotateRight: false
   };
   var isMouseDown = false;
   var lastMouseX = 0;
   var lastMouseY = 0;
   var isOverlayActive = false;
+  var cameraRotationAngle = 0;
+  var cameraRotationSpeed = 2;
   function init() {
     console.log("Initializing Three.js scene...");
     isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -24043,18 +24049,23 @@ void main() {
       switch (event.key.toLowerCase()) {
         case "w":
           keyState.forward = true;
+          event.preventDefault();
           break;
         case "s":
           keyState.backward = true;
+          event.preventDefault();
           break;
         case "a":
-          keyState.left = true;
+          keyState.rotateLeft = true;
+          event.preventDefault();
           break;
         case "d":
-          keyState.right = true;
+          keyState.rotateRight = true;
+          event.preventDefault();
           break;
         case " ":
           keyState.jump = true;
+          event.preventDefault();
           break;
       }
       return;
@@ -24127,10 +24138,10 @@ void main() {
           keyState.backward = false;
           break;
         case "a":
-          keyState.left = false;
+          keyState.rotateLeft = false;
           break;
         case "d":
-          keyState.right = false;
+          keyState.rotateRight = false;
           break;
         case " ":
           keyState.jump = false;
@@ -24309,6 +24320,12 @@ void main() {
   function updatePlayer(deltaTime) {
     if (!player) return;
     const moveDirection = new Vector3(0, 0, 0);
+    if (keyState.rotateLeft) {
+      cameraRotationAngle += cameraRotationSpeed * deltaTime;
+    }
+    if (keyState.rotateRight) {
+      cameraRotationAngle -= cameraRotationSpeed * deltaTime;
+    }
     const cameraDirection = new Vector3();
     camera.getWorldDirection(cameraDirection);
     cameraDirection.y = 0;
@@ -24321,27 +24338,21 @@ void main() {
     if (keyState.backward) {
       moveDirection.sub(cameraDirection);
     }
-    if (keyState.left) {
-      moveDirection.add(right);
-    }
-    if (keyState.right) {
-      moveDirection.sub(right);
-    }
     if (moveDirection.lengthSq() > 0) {
       moveDirection.normalize();
-      if (moveDirection.length() > 0) {
-        const targetRotation = Math.atan2(moveDirection.x, moveDirection.z);
-        player.rotation.y = targetRotation;
-      }
       moveDirection.multiplyScalar(playerState.speed * deltaTime);
       player.position.x += moveDirection.x;
       player.position.z += moveDirection.z;
+      const targetRotation = Math.atan2(moveDirection.x, moveDirection.z);
+      player.rotation.y = targetRotation;
     }
-    playerState.velocity.y -= playerState.gravity * deltaTime;
+    const currentGravity = playerState.velocity.y < 0 ? playerState.fallGravity : playerState.gravity;
+    playerState.velocity.y -= currentGravity * deltaTime;
     if (keyState.jump && playerState.onGround) {
       playerState.velocity.y = playerState.jumpPower;
       playerState.onGround = false;
       playerState.jumping = true;
+      console.log("Player jumped with velocity:", playerState.velocity.y);
     }
     player.position.y += playerState.velocity.y * deltaTime;
     const raycaster = new Raycaster();
@@ -24372,10 +24383,12 @@ void main() {
   }
   function updateCamera() {
     if (!player) return;
-    const idealOffset = new Vector3(-5, 5, -5);
-    idealOffset.applyQuaternion(player.quaternion);
-    idealOffset.add(player.position);
-    camera.position.lerp(idealOffset, 0.1);
+    const cameraDistance = 7;
+    const cameraHeight = 5;
+    const cameraX = player.position.x + cameraDistance * Math.sin(cameraRotationAngle);
+    const cameraZ = player.position.z + cameraDistance * Math.cos(cameraRotationAngle);
+    const targetPosition = new Vector3(cameraX, player.position.y + cameraHeight, cameraZ);
+    camera.position.lerp(targetPosition, 0.1);
     camera.lookAt(player.position);
   }
   function updatePlayerAnimation() {
@@ -25077,8 +25090,10 @@ void main() {
       onGround: true,
       jumping: false,
       speed: 5,
-      jumpPower: 10,
+      jumpPower: 15,
       gravity: 20,
+      fallGravity: 35,
+      // Higher gravity when falling
       currentAnimation: "idle"
     };
     const gameContainer = document.getElementById("game-container");
@@ -25209,7 +25224,9 @@ void main() {
       backward: false,
       left: false,
       right: false,
-      jump: false
+      jump: false,
+      rotateLeft: false,
+      rotateRight: false
     };
     isMouseDown = false;
   }
