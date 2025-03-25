@@ -252,28 +252,27 @@ export function updatePlayer(
   // Update player position
   player.position.copy(playerState.position);
   
-  // Rotate player to face movement direction
-  if (moveDirection.length() > 0) {
-    // Calculate the angle to rotate to
+  // Rotate player to face movement direction - ONLY if actually moving horizontally
+  if (moveDirection.length() > 0.001) {
+    // Calculate the angle to rotate to based on movement direction
     const targetRotationY = Math.atan2(moveDirection.x, moveDirection.z);
     
-    // Create a new rotation that only changes the Y axis (keeping player upright)
-    const newRotation = new THREE.Euler(
-      playerState.rotation.x,
-      targetRotationY,
-      playerState.rotation.z,
-      'YXZ'
-    );
+    // Prevent 360-degree spins by finding the shortest rotation path
+    let rotationDifference = targetRotationY - playerState.rotation.y;
     
-    // Smoothly interpolate current rotation to target rotation
-    const rotationLerpFactor = 10 * deltaTime; // Adjust for rotation speed
+    // Normalize the rotation difference to be between -π and π
+    while (rotationDifference > Math.PI) rotationDifference -= Math.PI * 2;
+    while (rotationDifference < -Math.PI) rotationDifference += Math.PI * 2;
     
-    // Update player state rotation (smoothly)
-    playerState.rotation.y = THREE.MathUtils.lerp(
-      playerState.rotation.y,
-      targetRotationY,
-      rotationLerpFactor
-    );
+    // Use a stronger rotation factor when on ground for tighter controls
+    // But slower rotation in air to prevent spinning
+    const rotationLerpFactor = playerState.onGround ? 10 * deltaTime : 5 * deltaTime;
+    
+    // Apply rotation with smooth lerp
+    playerState.rotation.y += rotationDifference * rotationLerpFactor;
+    
+    // Keep rotation within 0-2π range
+    playerState.rotation.y = (playerState.rotation.y + Math.PI * 2) % (Math.PI * 2);
     
     // Apply rotation to player object
     player.rotation.y = playerState.rotation.y;

@@ -31,7 +31,8 @@ import {
   createCityEnvironment, 
   setupCourseTemplate, 
   clearEnvironment,
-  createBuilderGrid
+  createBuilderGrid,
+  getInitialCameraPosition
 } from "./systems/environment.js";
 import { 
   loadPlayerCharacter, 
@@ -138,9 +139,9 @@ const SAVE_STATE_INTERVAL = 10; // Save every 10 seconds
 function init() {
   console.log("Initializing Three.js scene...");
   
-  // Check if last mode was builder mode
-  const lastMode = localStorage.getItem(STORAGE_KEYS.LAST_MODE);
-  console.log("Last mode from localStorage:", lastMode);
+  // Always start in builder mode by default
+  localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'builder');
+  const templateSize = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
   
   // Detect if on mobile
   isMobile = isMobileDevice();
@@ -187,23 +188,13 @@ function init() {
   // Lighting
   setupLighting(scene);
   
-  // Create ground
-  createGround(scene);
-  
-  // Don't create city environment if we're going straight to builder mode
-  if (!window.location.search.includes('builder=true') && lastMode !== 'builder') {
-    createCityEnvironment(scene);
-  }
-  
   // Create a placeholder player immediately - will be replaced when model loads
   import('./systems/player.js').then(playerModule => {
     player = playerModule.createPlaceholderPlayer(scene);
     console.log("Placeholder player created");
     
-    // Hide player if going to builder mode
-    if (window.location.search.includes('builder=true') || lastMode === 'builder') {
-      player.visible = false;
-    }
+    // Always hide player initially as we'll start in builder mode
+    player.visible = false;
   });
   
   // Load player character
@@ -217,10 +208,8 @@ function init() {
     mixer = m;
     actions = a;
     
-    // Hide player if in builder mode
-    if (builderMode) {
-      player.visible = false;
-    }
+    // Always hide player initially as we'll start in builder mode
+    player.visible = false;
   });
   
   // Set up event listeners
@@ -251,15 +240,9 @@ function init() {
   sendMessageToParent("webViewReady");
   console.log("Sent webViewReady message");
   
-  // Start in builder mode if URL parameter or last mode was builder
-  if (window.location.search.includes('builder=true') || lastMode === 'builder') {
-    const template = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
-    console.log("Starting in builder mode with template:", template);
-    enterBuilderMode(template);
-  } else {
-    console.log("Starting in player mode");
-    gameStarted = true;
-  }
+  // Always start in builder mode
+  console.log("Starting in builder mode with template:", templateSize);
+  enterBuilderMode(templateSize);
 }
 
 /**
@@ -509,8 +492,8 @@ function enterBuilderMode(templateSize: string = "medium") {
   // Clear existing environment
   clearEnvironment(scene);
   
-  // Create ground
-  createGround(scene);
+  // Skip creating ground since we'll have a platform floor
+  // createGround(scene);
   
   // Clear out existing blocks
   console.log("STORAGE DEBUG - Clearing existing building blocks, current count:", buildingBlocks.length);
@@ -627,9 +610,17 @@ function enterBuilderMode(templateSize: string = "medium") {
     console.log("No saved builder state found, creating new template");
     buildingBlocks = setupCourseTemplate(scene, templateSize);
     
-    // Set initial camera position and rotation
-    camera.position.set(0, 10, 20);
-    camera.rotation.set(-0.3, 0, 0);
+    // Add all building blocks to platforms for collision detection
+    buildingBlocks.forEach(block => {
+      if (!platforms.includes(block)) {
+        platforms.push(block);
+      }
+    });
+    
+    // Set better initial camera position for viewing the template
+    const initialCameraSetup = getInitialCameraPosition(templateSize);
+    camera.position.copy(initialCameraSetup.position);
+    camera.rotation.copy(initialCameraSetup.rotation);
   }
   
   // Always ensure camera rotation order is set correctly

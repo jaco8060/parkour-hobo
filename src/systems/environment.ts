@@ -1,6 +1,6 @@
 // Environment system for handling scene setup, lighting, and environment objects
 import * as THREE from "three";
-import { ENVIRONMENT_SETTINGS, TEMPLATE_SIZES, BUILDER_SETTINGS } from "../utils/config.js";
+import { ENVIRONMENT_SETTINGS, TEMPLATE_SIZES, BUILDER_SETTINGS, BLOCK_TYPES } from "../utils/config.js";
 
 /**
  * Sets up basic scene lighting
@@ -140,71 +140,102 @@ export function createParkourPlatforms(scene: THREE.Scene): THREE.Mesh[] {
 }
 
 /**
- * Creates the course template with start and finish platforms
+ * Sets up the course template with starter blocks
  */
-export function setupCourseTemplate(scene: THREE.Scene, templateType: string): THREE.Mesh[] {
-  let size: number;
+export function setupCourseTemplate(scene: THREE.Scene, templateSize: string = "medium"): THREE.Mesh[] {
+  console.log("Setting up course template:", templateSize);
   
-  console.log("TEMPLATE DEBUG - Setting up course template:", templateType);
+  const blocks: THREE.Mesh[] = [];
+  let templateSizeValue: number;
   
-  switch(templateType) {
+  // Set template size based on input
+  switch (templateSize) {
     case "small":
-      size = TEMPLATE_SIZES.SMALL;
+      templateSizeValue = TEMPLATE_SIZES.SMALL;
       break;
     case "large":
-      size = TEMPLATE_SIZES.LARGE;
+      templateSizeValue = TEMPLATE_SIZES.LARGE;
       break;
     case "medium":
     default:
-      size = TEMPLATE_SIZES.MEDIUM;
+      templateSizeValue = TEMPLATE_SIZES.MEDIUM;
   }
   
-  const buildingBlocks: THREE.Mesh[] = [];
-  console.log("TEMPLATE DEBUG - Building blocks array created, length:", buildingBlocks.length);
-  
-  // Create start platform (green)
-  const startGeometry = new THREE.BoxGeometry(5, 1, 5);
-  const startMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x00ff00,
+  // Create a flat floor platform in the center
+  const floorSize = 20; // Size of the central platform
+  const platformGeometry = new THREE.BoxGeometry(
+    floorSize,
+    BLOCK_TYPES.PLATFORM.size.height,
+    floorSize
+  );
+  const platformMaterial = new THREE.MeshStandardMaterial({
+    color: BLOCK_TYPES.PLATFORM.color,
     roughness: 0.7
   });
-  const startPlatform = new THREE.Mesh(startGeometry, startMaterial);
-  startPlatform.position.set(-size/4, 1, -size/4);
-  startPlatform.userData = { type: "start" };
-  scene.add(startPlatform);
-  buildingBlocks.push(startPlatform);
-  console.log("TEMPLATE DEBUG - Added start platform, blocks length:", buildingBlocks.length);
   
-  // Create finish platform (blue)
-  const finishGeometry = new THREE.BoxGeometry(5, 1, 5);
-  const finishMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x0000ff,
+  const floorPlatform = new THREE.Mesh(platformGeometry, platformMaterial);
+  floorPlatform.position.set(0, 0, 0); // Centered at origin
+  floorPlatform.receiveShadow = true;
+  floorPlatform.castShadow = true;
+  floorPlatform.userData = { type: 'platform' };
+  
+  scene.add(floorPlatform);
+  blocks.push(floorPlatform);
+  
+  // Add a start block at one end of the platform
+  const startGeometry = new THREE.BoxGeometry(
+    BLOCK_TYPES.START.size.width,
+    BLOCK_TYPES.START.size.height,
+    BLOCK_TYPES.START.size.depth
+  );
+  const startMaterial = new THREE.MeshStandardMaterial({
+    color: BLOCK_TYPES.START.color,
     roughness: 0.7
   });
-  const finishPlatform = new THREE.Mesh(finishGeometry, finishMaterial);
-  finishPlatform.position.set(size/4, 1, size/4);
-  finishPlatform.userData = { type: "finish" };
-  scene.add(finishPlatform);
-  buildingBlocks.push(finishPlatform);
-  console.log("TEMPLATE DEBUG - Added finish platform, blocks length:", buildingBlocks.length);
   
-  // Add visual boundaries
-  addTemplateBoundaryMarkers(scene, size);
+  const startBlock = new THREE.Mesh(startGeometry, startMaterial);
+  startBlock.position.set(-floorSize/2 + 3, 1, 0); // Position at the left edge of the platform
+  startBlock.receiveShadow = true;
+  startBlock.castShadow = true;
+  startBlock.userData = { type: 'start' };
   
-  // Create killzone (red plane below)
-  const killzoneGeometry = new THREE.PlaneGeometry(400, 400);
-  const killzoneMaterial = new THREE.MeshBasicMaterial({ 
-    color: 0xff0000, 
-    transparent: true,
-    opacity: 0.3
+  scene.add(startBlock);
+  blocks.push(startBlock);
+  
+  // Add a finish block at the other end
+  const finishGeometry = new THREE.BoxGeometry(
+    BLOCK_TYPES.FINISH.size.width,
+    BLOCK_TYPES.FINISH.size.height,
+    BLOCK_TYPES.FINISH.size.depth
+  );
+  const finishMaterial = new THREE.MeshStandardMaterial({
+    color: BLOCK_TYPES.FINISH.color,
+    roughness: 0.7
   });
-  const killzone = new THREE.Mesh(killzoneGeometry, killzoneMaterial);
-  killzone.rotation.x = -Math.PI / 2;
-  killzone.position.y = -10;
-  scene.add(killzone);
   
-  console.log("TEMPLATE DEBUG - Final building blocks array length:", buildingBlocks.length);
-  return buildingBlocks;
+  const finishBlock = new THREE.Mesh(finishGeometry, finishMaterial);
+  finishBlock.position.set(floorSize/2 - 3, 1, 0); // Position at the right edge of the platform
+  finishBlock.receiveShadow = true;
+  finishBlock.castShadow = true;
+  finishBlock.userData = { type: 'finish' };
+  
+  scene.add(finishBlock);
+  blocks.push(finishBlock);
+  
+  return blocks;
+}
+
+/**
+ * Get recommended camera position for a new course template
+ */
+export function getInitialCameraPosition(templateSize: string): { 
+  position: THREE.Vector3, 
+  rotation: THREE.Euler 
+} {
+  return {
+    position: new THREE.Vector3(0, 15, 25),  // Higher and further back for better overview
+    rotation: new THREE.Euler(-0.5, 0, 0)    // Tilted down more to see the whole platform
+  };
 }
 
 /**
