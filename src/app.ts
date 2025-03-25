@@ -187,11 +187,32 @@ function init() {
     createCityEnvironment(scene);
   }
   
+  // Create a placeholder player immediately - will be replaced when model loads
+  import('./systems/player.js').then(playerModule => {
+    player = playerModule.createPlaceholderPlayer(scene);
+    console.log("Placeholder player created");
+    
+    // Hide player if going to builder mode
+    if (window.location.search.includes('builder=true') || lastMode === 'builder') {
+      player.visible = false;
+    }
+  });
+  
   // Load player character
   loadPlayerCharacter(scene, (p: THREE.Object3D, m: THREE.AnimationMixer, a: AnimationActions) => {
+    // Remove placeholder if it exists
+    if (player) {
+      scene.remove(player);
+    }
+    
     player = p;
     mixer = m;
     actions = a;
+    
+    // Hide player if in builder mode
+    if (builderMode) {
+      player.visible = false;
+    }
   });
   
   // Set up event listeners
@@ -332,6 +353,9 @@ function animate() {
     // Update animation mixer
     if (mixer) {
       mixer.update(deltaTime);
+    } else if (player.userData?.isPlaceholder) {
+      // Animate placeholder character
+      animatePlaceholderPlayer(player, playerState, keyState, deltaTime);
     }
     
     // Update animations based on state
@@ -345,6 +369,58 @@ function animate() {
   
   // Render scene
   renderer.render(scene, camera);
+}
+
+/**
+ * Animates the placeholder player with basic movements
+ */
+function animatePlaceholderPlayer(
+  player: THREE.Object3D, 
+  playerState: PlayerState,
+  keyState: KeyState,
+  deltaTime: number
+): void {
+  // Check if this is a placeholder player
+  if (!player.userData?.isPlaceholder) return;
+  
+  const isMoving = keyState.forward || keyState.backward || keyState.left || keyState.right;
+  const isJumping = playerState.jumping;
+  
+  // Get the parts of the player
+  const arms = player.children.filter(child => 
+    child.position.y === 0.75 && (child.position.x === -0.65 || child.position.x === 0.65));
+  const legs = player.children.filter(child => 
+    child.position.y === -0.25 && (child.position.x === -0.3 || child.position.x === 0.3));
+  
+  if (isMoving) {
+    // Animate arms and legs while moving
+    const speed = 5; // Animation speed
+    const time = performance.now() * 0.001;
+    
+    arms.forEach((arm, index) => {
+      // Swing arms in opposite directions
+      arm.rotation.x = Math.sin(time * speed + (index * Math.PI)) * 0.5;
+    });
+    
+    legs.forEach((leg, index) => {
+      // Swing legs in opposite directions
+      leg.rotation.x = Math.sin(time * speed + (index * Math.PI)) * 0.5;
+    });
+  } else {
+    // Reset animation when idle
+    [...arms, ...legs].forEach(limb => {
+      // Smoothly return to neutral position
+      limb.rotation.x = limb.rotation.x * 0.9;
+    });
+  }
+  
+  if (isJumping) {
+    // Special jump animation
+    arms.forEach(arm => {
+      // Raise arms when jumping
+      arm.rotation.x = -0.5;
+    });
+  }
 }
 
 /**
@@ -742,10 +818,24 @@ function exitBuilderMode() {
     gameContainer.style.cursor = "default";
   }
   
-  // Show and position player
+  // Check if player exists and make it visible
   if (player) {
     player.visible = true;
     player.position.set(0, 1, 0);
+  } else {
+    // If no player exists yet, create a placeholder player
+    console.log("No player found, creating placeholder character");
+    import('./systems/player.js').then(playerModule => {
+      player = playerModule.createPlaceholderPlayer(scene);
+      mixer = null;
+      actions = {
+        idle: null,
+        running: null,
+        jumping: null
+      };
+    }).catch(error => {
+      console.error("Failed to create placeholder player:", error);
+    });
   }
   
   // Reset camera

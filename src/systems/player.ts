@@ -9,14 +9,65 @@ import { sendMessageToParent } from "../utils/helpers.js";
  * Creates a placeholder player character
  */
 export function createPlaceholderPlayer(scene: THREE.Scene): THREE.Object3D {
-  const playerGeometry = new THREE.BoxGeometry(1, 2, 1);
-  const playerMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-  const player = new THREE.Mesh(playerGeometry, playerMaterial);
-  player.position.copy(PLAYER_SETTINGS.DEFAULT_POSITION);
-  player.castShadow = true;
-  scene.add(player);
+  // Create a group to hold all player parts
+  const playerGroup = new THREE.Group();
+  playerGroup.position.copy(PLAYER_SETTINGS.DEFAULT_POSITION);
   
-  return player;
+  // Create body
+  const bodyGeometry = new THREE.BoxGeometry(1, 1.5, 0.6);
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x3498db });
+  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+  body.position.y = 0.75;
+  body.castShadow = true;
+  playerGroup.add(body);
+  
+  // Create head
+  const headGeometry = new THREE.BoxGeometry(0.7, 0.7, 0.7);
+  const headMaterial = new THREE.MeshStandardMaterial({ color: 0xecf0f1 });
+  const head = new THREE.Mesh(headGeometry, headMaterial);
+  head.position.y = 1.85;
+  head.castShadow = true;
+  playerGroup.add(head);
+  
+  // Create arms
+  const armGeometry = new THREE.BoxGeometry(0.3, 1, 0.3);
+  const armMaterial = new THREE.MeshStandardMaterial({ color: 0x3498db });
+  
+  // Left arm
+  const leftArm = new THREE.Mesh(armGeometry, armMaterial);
+  leftArm.position.set(-0.65, 0.75, 0);
+  leftArm.castShadow = true;
+  playerGroup.add(leftArm);
+  
+  // Right arm
+  const rightArm = new THREE.Mesh(armGeometry, armMaterial);
+  rightArm.position.set(0.65, 0.75, 0);
+  rightArm.castShadow = true;
+  playerGroup.add(rightArm);
+  
+  // Create legs
+  const legGeometry = new THREE.BoxGeometry(0.3, 1, 0.3);
+  const legMaterial = new THREE.MeshStandardMaterial({ color: 0x34495e });
+  
+  // Left leg
+  const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
+  leftLeg.position.set(-0.3, -0.25, 0);
+  leftLeg.castShadow = true;
+  playerGroup.add(leftLeg);
+  
+  // Right leg
+  const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
+  rightLeg.position.set(0.3, -0.25, 0);
+  rightLeg.castShadow = true;
+  playerGroup.add(rightLeg);
+  
+  // Add to scene
+  scene.add(playerGroup);
+  
+  // Mark as placeholder
+  playerGroup.userData = { isPlaceholder: true };
+  
+  return playerGroup;
 }
 
 /**
