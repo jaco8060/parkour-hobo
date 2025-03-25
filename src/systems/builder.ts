@@ -4,6 +4,16 @@ import { BLOCK_TYPES, BUILDER_SETTINGS } from "../utils/config.js";
 import { createElement, removeElement, sendMessageToParent, saveBuilderState } from "../utils/helpers.js";
 import { BlockData, BuildControls, CourseData } from "../utils/types.js";
 
+// Declare global window property for targeted block
+declare global {
+  interface Window {
+    __targetedBlockForRemoval: THREE.Mesh | null;
+  }
+}
+
+// Initialize the global property
+window.__targetedBlockForRemoval = null;
+
 /**
  * Updates builder camera movement based on controls
  */
@@ -163,16 +173,20 @@ export function updatePlacementPreview(
     const normal = intersects[0].face?.normal || new THREE.Vector3(0, 1, 0);
     
     // Offset along the normal to place on top of surfaces
-    const offset = 0.5; // Half the block height
+    const offset = BUILDER_SETTINGS.PLACEMENT_OFFSET; // Now configurable
     
     placementPreview.position.copy(intersectPoint).add(normal.multiplyScalar(offset));
     
-    // Snap to grid
+    // Snap to grid with configurable size
     if (BUILDER_SETTINGS.PLACEMENT_GRID_SNAP) {
-      placementPreview.position.x = Math.round(placementPreview.position.x);
-      placementPreview.position.y = Math.round(placementPreview.position.y);
-      placementPreview.position.z = Math.round(placementPreview.position.z);
+      const snapSize = BUILDER_SETTINGS.PLACEMENT_SNAP_SIZE;
+      placementPreview.position.x = Math.round(placementPreview.position.x / snapSize) * snapSize;
+      placementPreview.position.y = Math.round(placementPreview.position.y / snapSize) * snapSize;
+      placementPreview.position.z = Math.round(placementPreview.position.z / snapSize) * snapSize;
     }
+    
+    // Update or create position indicator
+    updatePositionIndicator(placementPreview);
     
     // Make preview visible
     placementPreview.visible = true;
@@ -181,11 +195,76 @@ export function updatePlacementPreview(
     placementPreview.position.copy(camera.position).add(direction.multiplyScalar(10));
     
     if (BUILDER_SETTINGS.PLACEMENT_GRID_SNAP) {
-      placementPreview.position.x = Math.round(placementPreview.position.x);
-      placementPreview.position.y = Math.round(placementPreview.position.y);
-      placementPreview.position.z = Math.round(placementPreview.position.z);
+      const snapSize = BUILDER_SETTINGS.PLACEMENT_SNAP_SIZE;
+      placementPreview.position.x = Math.round(placementPreview.position.x / snapSize) * snapSize;
+      placementPreview.position.y = Math.round(placementPreview.position.y / snapSize) * snapSize;
+      placementPreview.position.z = Math.round(placementPreview.position.z / snapSize) * snapSize;
     }
+    
+    // Update position indicator
+    updatePositionIndicator(placementPreview);
   }
+}
+
+/**
+ * Creates or updates a position indicator text above the preview block
+ */
+function updatePositionIndicator(placementPreview: THREE.Mesh): void {
+  // Remove existing indicator if present
+  let posIndicator = placementPreview.children.find(
+    child => child.userData?.type === 'positionIndicator'
+  );
+  
+  if (posIndicator) {
+    placementPreview.remove(posIndicator);
+  }
+  
+  // Format coordinates to whole numbers for display
+  const coords = {
+    x: Math.round(placementPreview.position.x),
+    y: Math.round(placementPreview.position.y),
+    z: Math.round(placementPreview.position.z)
+  };
+  
+  // Create text with coordinates
+  const canvas = document.createElement('canvas');
+  canvas.width = 350; // Wider canvas
+  canvas.height = 128;
+  
+  const context = canvas.getContext('2d');
+  if (!context) return;
+  
+  context.fillStyle = 'rgba(0, 0, 0, 0.7)'; // More opaque background
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Add border
+  context.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+  context.lineWidth = 2;
+  context.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+  
+  context.font = 'bold 40px Arial'; // Larger text
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  
+  // Draw text with coordinate values
+  context.fillStyle = 'white';
+  context.fillText(`X: ${coords.x}  Y: ${coords.y}  Z: ${coords.z}`, canvas.width/2, canvas.height/2);
+  
+  // Create texture from canvas
+  const texture = new THREE.CanvasTexture(canvas);
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+  const sprite = new THREE.Sprite(material);
+  
+  // Position the sprite above the block
+  const height = (placementPreview.geometry as THREE.BoxGeometry).parameters.height || 1;
+  sprite.position.set(0, height + 0.7, 0);
+  sprite.scale.set(3, 1.5, 1); // Larger sprite
+  
+  // Mark as position indicator
+  sprite.userData = { type: 'positionIndicator' };
+  
+  // Add to placement preview
+  placementPreview.add(sprite);
 }
 
 /**
@@ -275,39 +354,150 @@ export function placeBlock(
 }
 
 /**
- * Remove closest block to the preview
+ * Highlights the block that is currently targeted for removal
+ */
+export function highlightBlockForRemoval(
+  camera: THREE.Camera,
+  blocks: THREE.Mesh[],
+  maxDistance: number
+): THREE.Mesh | null {
+  // Reset all previously highlighted blocks
+  blocks.forEach(block => {
+    if (block.userData.originalMaterial) {
+      block.material = block.userData.originalMaterial;
+      delete block.userData.originalMaterial;
+    }
+    
+    // Remove any outline effect
+    const outline = block.children.find(child => child.userData?.type === 'outline');
+    if (outline) {
+      block.remove(outline);
+    }
+  });
+  
+  // Get camera forward direction
+  const direction = new THREE.Vector3(0, 0, -1);
+  direction.applyQuaternion(camera.quaternion);
+  
+  // Cast ray from camera
+  const raycaster = new THREE.Raycaster();
+  raycaster.set(camera.position, direction);
+  
+  const intersects = raycaster.intersectObjects(blocks);
+  
+  if (intersects.length > 0 && intersects[0].distance < maxDistance) {
+    const selectedBlock = intersects[0].object as THREE.Mesh;
+    
+    // Store original material if not already stored
+    if (!selectedBlock.userData.originalMaterial) {
+      selectedBlock.userData.originalMaterial = selectedBlock.material;
+      
+      // Create highlight material - much brighter and more visible
+      const highlightMaterial = new THREE.MeshStandardMaterial({
+        color: 0xff0000,
+        emissive: 0xff0000,
+        emissiveIntensity: 0.8,
+        transparent: true,
+        opacity: 0.9
+      });
+      
+      // Apply highlight material
+      selectedBlock.material = highlightMaterial;
+      
+      // Add a pulsing outline effect to make it more visible
+      createBlockOutline(selectedBlock);
+    }
+    
+    // Store the block reference for removal
+    window.__targetedBlockForRemoval = selectedBlock;
+    
+    return selectedBlock;
+  }
+  
+  // No block targeted
+  window.__targetedBlockForRemoval = null;
+  return null;
+}
+
+/**
+ * Creates a visible outline effect around a block
+ */
+function createBlockOutline(block: THREE.Mesh): void {
+  // Get the geometry parameters
+  const geometry = block.geometry as THREE.BoxGeometry;
+  const width = geometry.parameters.width;
+  const height = geometry.parameters.height;
+  const depth = geometry.parameters.depth;
+  
+  // Create slightly larger box for outline
+  const outlineGeometry = new THREE.BoxGeometry(
+    width + 0.05, 
+    height + 0.05, 
+    depth + 0.05
+  );
+  
+  // Create outline material
+  const outlineMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    side: THREE.BackSide,
+    transparent: true,
+    opacity: 0.8
+  });
+  
+  // Create outline mesh
+  const outline = new THREE.Mesh(outlineGeometry, outlineMaterial);
+  outline.userData = { type: 'outline' };
+  
+  // Add to block
+  block.add(outline);
+  
+  // Create pulse animation
+  const startTime = Date.now();
+  function pulseOutline() {
+    if (!block.parent) {
+      // Block has been removed, stop animation
+      return;
+    }
+    
+    const elapsedTime = (Date.now() - startTime) / 1000;
+    const scale = 1 + 0.1 * Math.sin(elapsedTime * 5);
+    
+    outline.scale.set(scale, scale, scale);
+    requestAnimationFrame(pulseOutline);
+  }
+  
+  // Start pulse animation
+  pulseOutline();
+}
+
+/**
+ * Remove the currently highlighted block
  */
 export function removeBlock(
   scene: THREE.Scene,
-  placementPreview: THREE.Mesh | null,
   buildingBlocks: THREE.Mesh[],
   platforms: THREE.Mesh[]
 ): void {
-  if (!placementPreview) return;
-  
   console.log("BLOCK DEBUG - Remove - Building blocks before:", buildingBlocks.length);
   console.log("BLOCK DEBUG - Remove - Platforms before:", platforms.length);
   
-  // Find the closest block
-  let closestIndex = -1;
-  let minDistance = Infinity;
+  // Get the currently highlighted block from the global reference
+  const blockToRemove = window.__targetedBlockForRemoval as THREE.Mesh | null;
   
-  for (let i = 0; i < buildingBlocks.length; i++) {
-    const block = buildingBlocks[i];
-    const distance = block.position.distanceTo(placementPreview.position);
-    if (distance < minDistance) {
-      minDistance = distance;
-      closestIndex = i;
-    }
+  if (!blockToRemove) {
+    console.log("No block targeted for removal");
+    return;
   }
   
-  // Remove the block if it's close enough
-  if (closestIndex !== -1 && minDistance < BUILDER_SETTINGS.REMOVAL_RANGE) {
-    const blockToRemove = buildingBlocks[closestIndex];
+  // Find the block in our arrays
+  const blockIndex = buildingBlocks.indexOf(blockToRemove);
+  
+  if (blockIndex !== -1) {
+    // Remove from scene
     scene.remove(blockToRemove);
     
     // Remove from building blocks array
-    buildingBlocks.splice(closestIndex, 1);
+    buildingBlocks.splice(blockIndex, 1);
     
     // Also remove from platforms array if it exists there
     const platformIndex = platforms.indexOf(blockToRemove);
@@ -317,7 +507,11 @@ export function removeBlock(
     
     console.log("BLOCK DEBUG - Remove - Building blocks after:", buildingBlocks.length);
     console.log("BLOCK DEBUG - Remove - Platforms after:", platforms.length);
-    // console.log(`Removed block at position: ${blockToRemove.position.x}, ${blockToRemove.position.y}, ${blockToRemove.position.z}`);
+    
+    // Clear the targeted block reference
+    window.__targetedBlockForRemoval = null;
+  } else {
+    console.log("Block to remove not found in building blocks array");
   }
 }
 
@@ -495,6 +689,130 @@ export function createBuilderUI(
     }
   );
   
+  // Add placement options
+  const placementOptionsContainer = createElement("div",
+    { class: "placement-options" },
+    {
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      padding: "10px 13px",
+      borderRadius: "4px",
+      marginBottom: "10px"
+    }
+  );
+  
+  const placementHeader = createElement("div",
+    {},
+    { fontWeight: "bold", marginBottom: "5px" },
+    "Placement Options:"
+  );
+  placementOptionsContainer.appendChild(placementHeader);
+  
+  // Grid snap toggle
+  const gridSnapContainer = createElement("div",
+    {},
+    {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: "5px"
+    }
+  );
+  
+  const gridSnapLabel = createElement("label",
+    { for: "grid-snap-toggle" },
+    {},
+    "Grid Snap:"
+  );
+  
+  const gridSnapToggle = createElement("input",
+    { 
+      type: "checkbox",
+      id: "grid-snap-toggle",
+      checked: BUILDER_SETTINGS.PLACEMENT_GRID_SNAP ? "checked" : ""
+    }
+  );
+  
+  gridSnapToggle.addEventListener("change", (e) => {
+    const isChecked = (e.target as HTMLInputElement).checked;
+    BUILDER_SETTINGS.PLACEMENT_GRID_SNAP = isChecked;
+    
+    // Save in local storage
+    localStorage.setItem('gridSnap', isChecked ? 'true' : 'false');
+  });
+  
+  gridSnapContainer.appendChild(gridSnapLabel);
+  gridSnapContainer.appendChild(gridSnapToggle);
+  placementOptionsContainer.appendChild(gridSnapContainer);
+  
+  // Grid size selector
+  const gridSizeContainer = createElement("div",
+    {},
+    {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: "5px"
+    }
+  );
+  
+  const gridSizeLabel = createElement("label",
+    { for: "grid-size-select" },
+    {},
+    "Grid Size:"
+  );
+  
+  const gridSizeSelect = createElement("select",
+    { id: "grid-size-select" },
+    { width: "80px" }
+  );
+  
+  [0.25, 0.5, 1, 2].forEach(size => {
+    const option = createElement("option", 
+      { value: size.toString() },
+      {},
+      size.toString()
+    );
+    if (size === BUILDER_SETTINGS.PLACEMENT_SNAP_SIZE) {
+      option.setAttribute("selected", "selected");
+    }
+    gridSizeSelect.appendChild(option);
+  });
+  
+  gridSizeSelect.addEventListener("change", (e) => {
+    const value = parseFloat((e.target as HTMLSelectElement).value);
+    BUILDER_SETTINGS.PLACEMENT_SNAP_SIZE = value;
+    
+    // Save in local storage
+    localStorage.setItem('gridSize', value.toString());
+  });
+  
+  gridSizeContainer.appendChild(gridSizeLabel);
+  gridSizeContainer.appendChild(gridSizeSelect);
+  placementOptionsContainer.appendChild(gridSizeContainer);
+  
+  // Load options from localStorage if available
+  const savedGridSnap = localStorage.getItem('gridSnap');
+  if (savedGridSnap !== null) {
+    const isChecked = savedGridSnap === 'true';
+    BUILDER_SETTINGS.PLACEMENT_GRID_SNAP = isChecked;
+    gridSnapToggle.checked = isChecked;
+  }
+  
+  const savedGridSize = localStorage.getItem('gridSize');
+  if (savedGridSize !== null) {
+    const value = parseFloat(savedGridSize);
+    if (!isNaN(value)) {
+      BUILDER_SETTINGS.PLACEMENT_SNAP_SIZE = value;
+      Array.from(gridSizeSelect.options).forEach(option => {
+        if (parseFloat(option.value) === value) {
+          option.selected = true;
+        }
+      });
+    }
+  }
+  
+  builderUI.appendChild(placementOptionsContainer);
+  
   // Save course button
   const saveButton = createElement("button", 
     { class: "save-button" },
@@ -552,16 +870,18 @@ export function createBuilderUI(
           localStorage.removeItem('builderState');
           localStorage.removeItem('builderTemplate');
           localStorage.removeItem('lastMode');
+          localStorage.removeItem('gridSnap');
+          localStorage.removeItem('gridSize');
         }
         alert("Storage reset successful. Refresh the page to see changes.");
       } catch (error) {
         console.error("Failed to reset localStorage:", error);
-        alert("Failed to reset storage. See console for details.");
+        alert("Failed to reset storage. Error: " + error);
       }
     }
   });
-  
   buttonGroup.appendChild(resetButton);
+  
   builderUI.appendChild(buttonGroup);
   
   // Instructions
@@ -791,4 +1111,103 @@ export function createBuilderDebugUI(
       <div>→ (Rotate R): ${buildControls.rotateRight}</div>
     `;
   }, 100);
+}
+
+/**
+ * Create a crosshair in the center of the screen for build mode
+ */
+export function createCrosshair(): void {
+  // Remove existing crosshair if any
+  removeElement("builder-crosshair");
+  
+  const container = document.getElementById("game-container");
+  if (!container) return;
+  
+  const crosshair = createElement("div", 
+    { id: "builder-crosshair" },
+    {
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%)",
+      width: "20px",
+      height: "20px",
+      pointerEvents: "none",
+      zIndex: "1000"
+    }
+  );
+  
+  // Create the crosshair lines
+  const horizontalLine = createElement("div", 
+    {},
+    {
+      position: "absolute",
+      top: "50%",
+      left: "0",
+      width: "100%",
+      height: "2px",
+      backgroundColor: "rgba(255, 255, 255, 0.8)",
+      transform: "translateY(-50%)"
+    }
+  );
+  
+  const verticalLine = createElement("div", 
+    {},
+    {
+      position: "absolute",
+      top: "0",
+      left: "50%",
+      width: "2px",
+      height: "100%",
+      backgroundColor: "rgba(255, 255, 255, 0.8)",
+      transform: "translateX(-50%)"
+    }
+  );
+  
+  const centerDot = createElement("div", 
+    {},
+    {
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      width: "4px",
+      height: "4px",
+      backgroundColor: "rgba(255, 255, 255, 0.9)",
+      borderRadius: "50%",
+      transform: "translate(-50%, -50%)"
+    }
+  );
+  
+  crosshair.appendChild(horizontalLine);
+  crosshair.appendChild(verticalLine);
+  crosshair.appendChild(centerDot);
+  
+  container.appendChild(crosshair);
+}
+
+/**
+ * Updates the crosshair based on the selected tool
+ */
+export function updateCrosshair(tool: string): void {
+  const crosshair = document.getElementById("builder-crosshair");
+  if (!crosshair) return;
+  
+  // Update crosshair appearance based on tool
+  switch (tool) {
+    case "build":
+      crosshair.style.display = "block";
+      Array.from(crosshair.children).forEach(child => {
+        (child as HTMLElement).style.backgroundColor = "rgba(255, 255, 255, 0.8)";
+      });
+      break;
+    case "remove":
+      crosshair.style.display = "block";
+      Array.from(crosshair.children).forEach(child => {
+        (child as HTMLElement).style.backgroundColor = "rgba(255, 0, 0, 0.8)";
+      });
+      break;
+    case "camera":
+      crosshair.style.display = "none";
+      break;
+  }
 } 

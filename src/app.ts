@@ -13,7 +13,9 @@ import {
   CAMERA_SETTINGS, 
   PLAYER_SETTINGS, 
   STORAGE_KEYS,
-  BLOCK_TYPES 
+  BLOCK_TYPES,
+  TEMPLATE_SIZES,
+  BUILDER_SETTINGS
 } from "./utils/config.js";
 import { 
   isMobileDevice, 
@@ -28,7 +30,8 @@ import {
   createGround, 
   createCityEnvironment, 
   setupCourseTemplate, 
-  clearEnvironment 
+  clearEnvironment,
+  createBuilderGrid
 } from "./systems/environment.js";
 import { 
   loadPlayerCharacter, 
@@ -48,7 +51,10 @@ import {
   createBuilderUI, 
   createBuilderToolbar, 
   updateToolbarSelection, 
-  createBuilderDebugUI 
+  createBuilderDebugUI,
+  createCrosshair,
+  updateCrosshair,
+  highlightBlockForRemoval
 } from "./systems/builder.js";
 import { 
   setupEventListeners, 
@@ -327,6 +333,11 @@ function animate() {
       
       // Make sure visibility matches the current tool
       placementPreview.visible = currentBuilderTool === "build";
+      
+      // Handle block highlighting for remove mode
+      if (currentBuilderTool === "remove") {
+        highlightBlockForRemoval(camera, buildingBlocks, BUILDER_SETTINGS.REMOVAL_RANGE);
+      }
     }
   } else if (gameStarted && player) {
     // Regular game update
@@ -509,6 +520,16 @@ function enterBuilderMode(templateSize: string = "medium") {
   // Try to load existing builder state first
   const savedState = loadBuilderState();
   
+  // Find the template size
+  let templateSizeValue = TEMPLATE_SIZES.MEDIUM;
+  switch(templateSize) {
+    case "small": templateSizeValue = TEMPLATE_SIZES.SMALL; break;
+    case "large": templateSizeValue = TEMPLATE_SIZES.LARGE; break;
+  }
+  
+  // Create builder grid for accurate placement
+  createBuilderGrid(scene, templateSizeValue);
+  
   if (savedState && savedState.blocks && savedState.blocks.length > 0) {
     console.log("STORAGE DEBUG - Loading previous builder state with", savedState.blocks.length, "blocks");
     
@@ -654,6 +675,9 @@ function enterBuilderMode(templateSize: string = "medium") {
           placementPreview.visible = tool === "build";
         }
         
+        // Update crosshair appearance based on tool
+        updateCrosshair(tool);
+        
         // Save state when tool changes
         saveBuilderState(
           builderMode,
@@ -665,6 +689,10 @@ function enterBuilderMode(templateSize: string = "medium") {
         );
       }
     );
+    
+    // Create crosshair for build/remove modes
+    createCrosshair();
+    updateCrosshair(currentBuilderTool);
     
     createBuilderDebugUI(buildControls);
     
@@ -735,7 +763,7 @@ function enterBuilderMode(templateSize: string = "medium") {
         if (currentBuilderTool === "remove" && !isPlacingBlock) {
           // console.log("Attempting to remove block");
           isPlacingBlock = true;
-          removeBlock(scene, placementPreview, buildingBlocks, platforms);
+          removeBlock(scene, buildingBlocks, platforms);
           // console.log("Block removed, remaining blocks:", buildingBlocks.length);
           isPlacingBlock = false;
         } else {
@@ -799,6 +827,7 @@ function exitBuilderMode() {
   removeElement("builder-toolbar");
   removeElement("builder-debug");
   removeElement("movement-pad");
+  removeElement("builder-crosshair");
   
   // Remove placement preview
   if (placementPreview) {

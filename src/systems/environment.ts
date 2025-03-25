@@ -1,6 +1,6 @@
 // Environment system for handling scene setup, lighting, and environment objects
 import * as THREE from "three";
-import { ENVIRONMENT_SETTINGS, TEMPLATE_SIZES } from "../utils/config.js";
+import { ENVIRONMENT_SETTINGS, TEMPLATE_SIZES, BUILDER_SETTINGS } from "../utils/config.js";
 
 /**
  * Sets up basic scene lighting
@@ -281,4 +281,56 @@ export function clearEnvironment(scene: THREE.Scene): void {
   });
   
   console.log("ENV DEBUG - Scene objects after clearing:", scene.children.length);
+}
+
+/**
+ * Creates a visible grid on the ground for more accurate block placement
+ */
+export function createBuilderGrid(scene: THREE.Scene, size: number): void {
+  if (!BUILDER_SETTINGS.SHOW_GRID_LINES) return;
+  
+  // Remove any existing grid
+  const existingGrid = scene.children.find(child => child.name === "BuilderGrid");
+  if (existingGrid) {
+    scene.remove(existingGrid);
+  }
+  
+  // Create a grid helper
+  const gridSize = Math.ceil(size / 2);
+  const divisions = gridSize * 2; // One division per unit
+  const gridHelper = new THREE.GridHelper(
+    size, 
+    divisions, 
+    BUILDER_SETTINGS.GRID_COLOR, 
+    BUILDER_SETTINGS.GRID_COLOR
+  );
+  gridHelper.position.y = 0.05; // Slightly above ground to avoid z-fighting
+  gridHelper.material.opacity = BUILDER_SETTINGS.GRID_OPACITY;
+  gridHelper.material.transparent = true;
+  gridHelper.name = "BuilderGrid";
+  
+  scene.add(gridHelper);
+  
+  // Create axis helpers for better orientation
+  const axisLength = 5;
+  
+  // X axis - red
+  const xAxisGeometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0.1, 0),
+    new THREE.Vector3(axisLength, 0.1, 0)
+  ]);
+  const xAxisMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2 });
+  const xAxis = new THREE.Line(xAxisGeometry, xAxisMaterial);
+  xAxis.name = "BuilderGridXAxis";
+  scene.add(xAxis);
+  
+  // Z axis - blue
+  const zAxisGeometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0.1, 0),
+    new THREE.Vector3(0, 0.1, axisLength)
+  ]);
+  const zAxisMaterial = new THREE.LineBasicMaterial({ color: 0x0000ff, linewidth: 2 });
+  const zAxis = new THREE.Line(zAxisGeometry, zAxisMaterial);
+  zAxis.name = "BuilderGridZAxis";
+  scene.add(zAxis);
 } 
