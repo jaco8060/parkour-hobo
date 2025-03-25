@@ -35,8 +35,12 @@ export function updateBuilderCamera(
   right.y = 0; // Keep movement horizontal
   right.normalize();
   
-  // Use the configured builder camera speed
-  const moveSpeed = BUILDER_SETTINGS.CAMERA_SPEED;
+  // Use the configured builder camera speed with sprint multiplier if active
+  let moveSpeed = BUILDER_SETTINGS.CAMERA_SPEED;
+  if (buildControls.sprint) {
+    moveSpeed *= BUILDER_SETTINGS.SPRINT_MULTIPLIER;
+  }
+  
   let moved = false;
   
   // Handle keyboard movement
@@ -900,6 +904,7 @@ export function createBuilderUI(
     <p style="margin: 2px 0">Arrow Left/Right - Rotate camera</p>
     <p style="margin: 2px 0">Right-click + drag - Look around</p>
     <p style="margin: 2px 0">Left Click - Place block</p>
+    <p style="margin: 2px 0">Shift - Sprint (move faster)</p>
     <p style="margin: 2px 0">Use toolbar for tools</p>
     <p style="margin: 2px 0; color: #ffeb3b">Need start and finish blocks!</p>
     `
@@ -1109,6 +1114,9 @@ export function createBuilderDebugUI(
       <div>E (Down): ${buildControls.down}</div>
       <div>← (Rotate L): ${buildControls.rotateLeft}</div>
       <div>→ (Rotate R): ${buildControls.rotateRight}</div>
+      <div style="color: ${buildControls.sprint ? '#ff9900' : 'white'}">
+        <strong>SHIFT (Sprint): ${buildControls.sprint}</strong>
+      </div>
     `;
   }, 100);
 }

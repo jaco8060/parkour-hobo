@@ -29,6 +29,30 @@ export function createPlaceholderPlayer(scene: THREE.Scene): THREE.Object3D {
   head.castShadow = true;
   playerGroup.add(head);
   
+  // Create face to indicate front direction
+  const faceGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+  const faceMaterial = new THREE.MeshStandardMaterial({ color: 0xe74c3c });
+  
+  // Create nose to indicate front
+  const nose = new THREE.Mesh(faceGeometry, faceMaterial);
+  nose.position.set(0, 1.85, 0.4); // Position it on the front of the head
+  nose.castShadow = true;
+  playerGroup.add(nose);
+  
+  // Create eyes to further indicate front
+  const eyeGeometry = new THREE.BoxGeometry(0.15, 0.1, 0.1);
+  const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
+  
+  // Left eye
+  const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  leftEye.position.set(-0.2, 1.9, 0.35);
+  playerGroup.add(leftEye);
+  
+  // Right eye
+  const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  rightEye.position.set(0.2, 1.9, 0.35);
+  playerGroup.add(rightEye);
+  
   // Create arms
   const armGeometry = new THREE.BoxGeometry(0.3, 1, 0.3);
   const armMaterial = new THREE.MeshStandardMaterial({ color: 0x3498db });
@@ -61,8 +85,19 @@ export function createPlaceholderPlayer(scene: THREE.Scene): THREE.Object3D {
   rightLeg.castShadow = true;
   playerGroup.add(rightLeg);
   
+  // Add a small cube to the back to make it clearer which is back/front
+  const backIndicator = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, 0.1, 0.1),
+    new THREE.MeshStandardMaterial({ color: 0x95a5a6 })
+  );
+  backIndicator.position.set(0, 0.75, -0.35);
+  playerGroup.add(backIndicator);
+  
   // Add to scene
   scene.add(playerGroup);
+  
+  // Make sure the player is facing forward (negative Z is forward in Three.js)
+  playerGroup.rotation.y = 0;
   
   // Mark as placeholder
   playerGroup.userData = { isPlaceholder: true };
@@ -133,7 +168,7 @@ export function loadPlayerCharacter(
 }
 
 /**
- * Updates the player physics and movement
+ * Updates player character position and movement
  */
 export function updatePlayer(
   deltaTime: number,
@@ -146,22 +181,53 @@ export function updatePlayer(
   cameraRotationAngle: number,
   updateCameraFn: () => void
 ): void {
-  if (!player) return;
+  // Apply gravity
+  const gravity = playerState.jumping ? playerState.gravity : playerState.fallGravity;
+  playerState.velocity.y -= gravity * deltaTime;
   
-  // Movement direction based on input
-  const moveDirection = new THREE.Vector3(0, 0, 0);
+  // Check if we're on the ground
+  const raycaster = new THREE.Raycaster();
+  raycaster.set(
+    playerState.position,
+    new THREE.Vector3(0, -1, 0)
+  );
   
-  // Get camera direction for movement relative to camera
+  const intersects = raycaster.intersectObjects(platforms);
+  playerState.onGround = intersects.length > 0 && 
+    intersects[0].distance < PLAYER_SETTINGS.GROUND_CHECK_DISTANCE;
+  
+  // Reset vertical velocity if on ground
+  if (playerState.onGround && playerState.velocity.y < 0) {
+    playerState.velocity.y = 0;
+    playerState.jumping = false;
+  }
+  
+  // Jump if on ground
+  if (keyState.jump && playerState.onGround) {
+    playerState.velocity.y = playerState.jumpPower;
+    playerState.jumping = true;
+    playerState.onGround = false;
+  }
+  
+  // Get camera direction for movement
   const cameraDirection = new THREE.Vector3();
   camera.getWorldDirection(cameraDirection);
   cameraDirection.y = 0;
   cameraDirection.normalize();
   
-  // Calculate right vector
+  // Get right vector (perpendicular to camera direction)
   const right = new THREE.Vector3();
-  right.crossVectors(new THREE.Vector3(0, 1, 0), cameraDirection).normalize();
+  right.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0));
   
-  // Apply input for forward/backward movement only
+  // Calculate move direction
+  const moveDirection = new THREE.Vector3(0, 0, 0);
+  
+  // Determine base movement speed based on sprint status
+  let currentSpeed = playerState.speed;
+  if (keyState.sprint) {
+    currentSpeed *= PLAYER_SETTINGS.SPRINT_MULTIPLIER;
+  }
+  
   if (keyState.forward) {
     moveDirection.add(cameraDirection);
   }
@@ -169,90 +235,69 @@ export function updatePlayer(
     moveDirection.sub(cameraDirection);
   }
   
-  // Normalize movement direction if not zero
-  if (moveDirection.lengthSq() > 0) {
+  // For left/right in FPS style, use A/D to rotate camera
+  
+  // Normalize if moving diagonally
+  if (moveDirection.length() > 0) {
     moveDirection.normalize();
-    
-    // Apply movement speed
-    moveDirection.multiplyScalar(playerState.speed * deltaTime);
-    
-    // Update position with horizontal movement
-    player.position.x += moveDirection.x;
-    player.position.z += moveDirection.z;
-    
-    // Rotate player to face movement direction (only if actually moving)
-    const targetRotation = Math.atan2(moveDirection.x, moveDirection.z);
-    player.rotation.y = targetRotation;
   }
   
-  // Apply gravity - use higher gravity when falling
-  const currentGravity = playerState.velocity.y < 0 ? playerState.fallGravity : playerState.gravity;
-  playerState.velocity.y -= currentGravity * deltaTime;
-  
-  // Apply jump if on ground
-  if (keyState.jump && playerState.onGround) {
-    playerState.velocity.y = playerState.jumpPower;
-    playerState.onGround = false;
-    playerState.jumping = true;
-    console.log("Player jumped with velocity:", playerState.velocity.y);
-  }
+  // Apply movement
+  moveDirection.multiplyScalar(currentSpeed * deltaTime);
+  playerState.position.add(moveDirection);
   
   // Apply vertical velocity
-  player.position.y += playerState.velocity.y * deltaTime;
+  playerState.position.y += playerState.velocity.y * deltaTime;
   
-  // Check ground collision
-  checkGroundCollision(player, playerState, platforms, scene);
+  // Update player position
+  player.position.copy(playerState.position);
   
-  // Prevent falling below the ground
-  if (player.position.y < 1) {
-    player.position.y = 1;
-    playerState.velocity.y = 0;
-    playerState.onGround = true;
-    playerState.jumping = false;
+  // Rotate player to face movement direction
+  if (moveDirection.length() > 0) {
+    // Calculate the angle to rotate to
+    const targetRotationY = Math.atan2(moveDirection.x, moveDirection.z);
+    
+    // Create a new rotation that only changes the Y axis (keeping player upright)
+    const newRotation = new THREE.Euler(
+      playerState.rotation.x,
+      targetRotationY,
+      playerState.rotation.z,
+      'YXZ'
+    );
+    
+    // Smoothly interpolate current rotation to target rotation
+    const rotationLerpFactor = 10 * deltaTime; // Adjust for rotation speed
+    
+    // Update player state rotation (smoothly)
+    playerState.rotation.y = THREE.MathUtils.lerp(
+      playerState.rotation.y,
+      targetRotationY,
+      rotationLerpFactor
+    );
+    
+    // Apply rotation to player object
+    player.rotation.y = playerState.rotation.y;
   }
   
-  // Update camera to follow player
+  // Update camera position to follow player
   updateCameraFn();
+  
+  // Reset check for whether we were in the air for animation purposes
+  playerState.jumping = !playerState.onGround;
+  
+  // Death check - if player falls below -20, reset position
+  if (playerState.position.y < -20) {
+    console.log("Player fell out of world, respawning");
+    playerState.position.set(
+      PLAYER_SETTINGS.DEFAULT_POSITION.x,
+      PLAYER_SETTINGS.DEFAULT_POSITION.y,
+      PLAYER_SETTINGS.DEFAULT_POSITION.z
+    );
+    playerState.velocity.set(0, 0, 0);
+  }
   
   // Send position update to parent
   sendPositionUpdate(player, playerState);
-}
-
-/**
- * Checks for collisions with the ground and platforms
- */
-export function checkGroundCollision(
-  player: THREE.Object3D,
-  playerState: PlayerState,
-  platforms: THREE.Mesh[],
-  scene: THREE.Scene
-): void {
-  const raycaster = new THREE.Raycaster();
-  raycaster.set(
-    new THREE.Vector3(player.position.x, player.position.y, player.position.z),
-    new THREE.Vector3(0, -1, 0)
-  );
-  
-  // Find the ground mesh
-  const groundMesh = scene.children.find(child => 
-    child instanceof THREE.Mesh && child.rotation.x === -Math.PI / 2);
-  
-  // Create array of objects to check for collision
-  const collisionObjects = [...platforms];
-  if (groundMesh) collisionObjects.push(groundMesh as THREE.Mesh);
-  
-  // Check for collisions with the ground and platforms
-  const intersects = raycaster.intersectObjects(collisionObjects);
-  
-  // If the player is very close to the ground or platform, consider them on the ground
-  if (intersects.length > 0 && intersects[0].distance < PLAYER_SETTINGS.GROUND_CHECK_DISTANCE) {
-    playerState.velocity.y = 0;
-    player.position.y = intersects[0].point.y + 1;
-    playerState.onGround = true;
-    playerState.jumping = false;
-  } else {
-    playerState.onGround = false;
-  }
 }
 
 /**
@@ -364,4 +409,59 @@ export function resetPlayerState(): PlayerState {
     fallGravity: PLAYER_SETTINGS.FALL_GRAVITY,
     currentAnimation: "idle"
   };
+}
+
+/**
+ * Animates the placeholder player with basic movements
+ */
+function animatePlaceholderPlayer(
+  player: THREE.Object3D, 
+  playerState: PlayerState,
+  keyState: KeyState,
+  deltaTime: number
+): void {
+  // Check if this is a placeholder player
+  if (!player.userData?.isPlaceholder) return;
+  
+  const isMoving = keyState.forward || keyState.backward || keyState.left || keyState.right;
+  const isJumping = playerState.jumping;
+  const isSprinting = keyState.sprint;
+  
+  // Get the parts of the player
+  const arms = player.children.filter(child => 
+    child.position.y === 0.75 && (child.position.x === -0.65 || child.position.x === 0.65));
+  const legs = player.children.filter(child => 
+    child.position.y === -0.25 && (child.position.x === -0.3 || child.position.x === 0.3));
+  
+  if (isMoving) {
+    // Animate arms and legs while moving
+    // Increase animation speed when sprinting
+    const baseSpeed = 5;
+    const speed = isSprinting ? baseSpeed * 1.8 : baseSpeed;
+    const time = performance.now() * 0.001;
+    
+    arms.forEach((arm, index) => {
+      // Swing arms in opposite directions
+      arm.rotation.x = Math.sin(time * speed + (index * Math.PI)) * 0.5;
+    });
+    
+    legs.forEach((leg, index) => {
+      // Swing legs in opposite directions
+      leg.rotation.x = Math.sin(time * speed + (index * Math.PI)) * 0.5;
+    });
+  } else {
+    // Reset animation when idle
+    [...arms, ...legs].forEach(limb => {
+      // Smoothly return to neutral position
+      limb.rotation.x = limb.rotation.x * 0.9;
+    });
+  }
+  
+  if (isJumping) {
+    // Special jump animation
+    arms.forEach(arm => {
+      // Raise arms when jumping
+      arm.rotation.x = -0.5;
+    });
+  }
 } 

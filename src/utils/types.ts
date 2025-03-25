@@ -24,6 +24,7 @@ export interface KeyState {
   jump: boolean;
   rotateLeft: boolean;
   rotateRight: boolean;
+  sprint: boolean;
 }
 
 // Builder controls interface
@@ -36,6 +37,7 @@ export interface BuildControls {
   down: boolean;
   rotateLeft: boolean;
   rotateRight: boolean;
+  sprint: boolean;
 }
 
 // Touch joystick interface

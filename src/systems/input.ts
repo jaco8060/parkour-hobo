@@ -98,6 +98,17 @@ export function handleKeyDown(
     return;
   }
 
+  // Handle sprint key (Shift) for both modes
+  if (event.key === 'Shift') {
+    if (isInBuilderMode) {
+      buildControls.sprint = true;
+    } else {
+      keyState.sprint = true;
+    }
+    event.preventDefault();
+    return;
+  }
+
   if (!isInBuilderMode) {
     // Regular game controls
     switch (event.key.toLowerCase()) {
@@ -192,6 +203,16 @@ export function handleKeyUp(
   
   // Ignore key events when overlay is active
   if (getOverlayActive()) return;
+  
+  // Handle sprint key (Shift) for both modes
+  if (event.key === 'Shift') {
+    if (isInBuilderMode) {
+      buildControls.sprint = false;
+    } else {
+      keyState.sprint = false;
+    }
+    return;
+  }
   
   if (!isInBuilderMode) {
     // Regular game controls
@@ -412,6 +433,7 @@ export function resetAllControls(
   buildControls.down = false;
   buildControls.rotateLeft = false;
   buildControls.rotateRight = false;
+  buildControls.sprint = false;
   
   // Reset game controls
   keyState.forward = false;
@@ -421,4 +443,5 @@ export function resetAllControls(
   keyState.jump = false;
   keyState.rotateLeft = false;
   keyState.rotateRight = false;
+  keyState.sprint = false;
 } 

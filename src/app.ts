@@ -106,7 +106,8 @@ let buildControls: BuildControls = {
   up: false,
   down: false,
   rotateLeft: false,
-  rotateRight: false
+  rotateRight: false,
+  sprint: false
 };
 let placementPreview: THREE.Mesh | null = null;
 let isPlacingBlock = false;
@@ -123,7 +124,8 @@ let keyState: KeyState = {
   right: false,
   jump: false,
   rotateLeft: false,
-  rotateRight: false
+  rotateRight: false,
+  sprint: false
 };
 
 // Timer for periodically saving builder state
