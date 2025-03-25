@@ -19,9 +19,13 @@ export const PLAYER_SETTINGS = {
   MOVEMENT_SPEED: 5,
   SPRINT_MULTIPLIER: 1.8,
   JUMP_POWER: 15,
-  GRAVITY: 20,
-  FALL_GRAVITY: 35,
-  GROUND_CHECK_DISTANCE: 1.1
+  GRAVITY: 30,
+  FALL_GRAVITY: 45,
+  GROUND_CHECK_DISTANCE: 1.1,
+  WALL_CHECK_DISTANCE: 0.6,     // Distance to check for walls
+  COLLISION_SEGMENTS: 4,        // Number of raycasts for wall collision (higher = more precise but more expensive)
+  PLAYER_RADIUS: 0.4,           // Player collision radius
+  WALL_SLIDE_FACTOR: 0.2        // How much to slide along walls when colliding (0 = stop completely, 1 = no collision)
 };
 
 // Builder settings

@@ -168,6 +168,81 @@ export function loadPlayerCharacter(
 }
 
 /**
+ * Checks for wall collisions and adjusts player position accordingly
+ */
+function checkWallCollision(
+  position: THREE.Vector3,
+  moveDirection: THREE.Vector3,
+  platforms: THREE.Mesh[],
+  playerRadius: number,
+  wallCheckDistance: number,
+  collisionSegments: number,
+  slideFactorBase: number
+): boolean {
+  // No need to check if not moving
+  if (moveDirection.length() === 0) return false;
+  
+  let collided = false;
+  const normalizedDirection = moveDirection.clone().normalize();
+  
+  // Check for collisions at different angles around the player
+  for (let i = 0; i < collisionSegments; i++) {
+    // Calculate angle for this ray (0 to 2π)
+    const angle = (i / collisionSegments) * Math.PI * 2;
+    
+    // Calculate ray direction (distributed around the player)
+    const rayDirection = new THREE.Vector3(
+      Math.sin(angle),
+      0,
+      Math.cos(angle)
+    );
+    
+    // Only care about rays that are in the general direction we're moving
+    // Dot product > 0 means the ray is pointing in roughly the same direction as movement
+    const alignment = rayDirection.dot(normalizedDirection);
+    if (alignment <= 0) continue;  // Skip rays pointing away from movement direction
+    
+    // Create raycaster
+    const raycaster = new THREE.Raycaster();
+    const raycastPosition = position.clone();
+    raycastPosition.y += 0.5; // Cast ray from middle of player, not feet
+    
+    raycaster.set(raycastPosition, rayDirection);
+    
+    // Check for intersections
+    const intersects = raycaster.intersectObjects(platforms);
+    
+    // If we hit something within our collision distance
+    if (intersects.length > 0 && intersects[0].distance < playerRadius + wallCheckDistance) {
+      collided = true;
+      
+      // Get the collision normal (perpendicular to the hit surface)
+      const collisionNormal = intersects[0].face?.normal || new THREE.Vector3(0, 0, 0);
+      
+      // Convert the normal from object space to world space
+      const hitObject = intersects[0].object as THREE.Mesh;
+      const normalMatrix = new THREE.Matrix3().getNormalMatrix(hitObject.matrixWorld);
+      collisionNormal.applyMatrix3(normalMatrix).normalize();
+      
+      // Calculate how much we should slide along the wall
+      // Higher alignment = more direct collision = less sliding
+      const slideFactor = slideFactorBase * (1 - alignment);
+      
+      // Project the movement vector onto the collision plane
+      const projection = new THREE.Vector3();
+      projection.copy(moveDirection);
+      projection.projectOnPlane(collisionNormal);
+      projection.multiplyScalar(slideFactor);
+      
+      // Replace the original movement with the slide projection
+      moveDirection.copy(projection);
+    }
+  }
+  
+  return collided;
+}
+
+/**
  * Updates player character position and movement
  */
 export function updatePlayer(
@@ -242,8 +317,24 @@ export function updatePlayer(
     moveDirection.normalize();
   }
   
-  // Apply movement
+  // Scale by speed and deltaTime
   moveDirection.multiplyScalar(currentSpeed * deltaTime);
+  
+  // Save original position before collision checks
+  const originalPosition = playerState.position.clone();
+  
+  // Check for wall collisions and adjust movement if needed
+  checkWallCollision(
+    playerState.position,
+    moveDirection,
+    platforms,
+    PLAYER_SETTINGS.PLAYER_RADIUS,
+    PLAYER_SETTINGS.WALL_CHECK_DISTANCE,
+    PLAYER_SETTINGS.COLLISION_SEGMENTS,
+    PLAYER_SETTINGS.WALL_SLIDE_FACTOR
+  );
+  
+  // Apply adjusted horizontal movement
   playerState.position.add(moveDirection);
   
   // Apply vertical velocity
