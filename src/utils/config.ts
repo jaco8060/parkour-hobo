@@ -57,6 +57,12 @@ export const BLOCK_TYPES = {
     size: { width: 3, height: 1, depth: 3 },
     type: "platform"
   },
+  FLOOR_PLATFORM: {
+    name: "floor",
+    color: 0xdddddd,
+    size: { width: 20, height: 1, depth: 20 },
+    type: "floor"
+  },
   START: {
     name: "start",
     color: 0x00ff00,

@@ -105,7 +105,7 @@ export function createPlacementPreview(
   selectedBlockType: string
 ): THREE.Mesh {
   let geometry, material;
-  
+
   switch(selectedBlockType) {
     case "start":
       geometry = new THREE.BoxGeometry(
@@ -131,6 +131,18 @@ export function createPlacementPreview(
         opacity: 0.5
       });
       break;
+    case "floor":
+      geometry = new THREE.BoxGeometry(
+        BLOCK_TYPES.FLOOR_PLATFORM.size.width, 
+        BLOCK_TYPES.FLOOR_PLATFORM.size.height, 
+        BLOCK_TYPES.FLOOR_PLATFORM.size.depth
+      );
+      material = new THREE.MeshStandardMaterial({ 
+        color: BLOCK_TYPES.FLOOR_PLATFORM.color,
+        transparent: true,
+        opacity: 0.5
+      });
+      break;
     case "platform":
     default:
       geometry = new THREE.BoxGeometry(
@@ -144,8 +156,12 @@ export function createPlacementPreview(
         opacity: 0.5
       });
   }
-  
+
   const preview = new THREE.Mesh(geometry, material);
+  preview.position.set(0, 0, -BUILDER_SETTINGS.PLACEMENT_PREVIEW_DISTANCE);
+  preview.visible = false;
+  preview.userData = { type: "preview", blockType: selectedBlockType };
+  
   scene.add(preview);
   
   return preview;
@@ -319,6 +335,17 @@ export function placeBlock(
       );
       material = new THREE.MeshStandardMaterial({ 
         color: BLOCK_TYPES.FINISH.color,
+        roughness: 0.7
+      });
+      break;
+    case "floor":
+      geometry = new THREE.BoxGeometry(
+        BLOCK_TYPES.FLOOR_PLATFORM.size.width, 
+        BLOCK_TYPES.FLOOR_PLATFORM.size.height, 
+        BLOCK_TYPES.FLOOR_PLATFORM.size.depth
+      );
+      material = new THREE.MeshStandardMaterial({ 
+        color: BLOCK_TYPES.FLOOR_PLATFORM.color,
         roughness: 0.7
       });
       break;
@@ -677,6 +704,7 @@ export function createBuilderUI(
   };
   
   blockTypeSelector.appendChild(createBlockButton("Platform", "platform", "#cccccc"));
+  blockTypeSelector.appendChild(createBlockButton("Floor", "floor", "#dddddd"));
   blockTypeSelector.appendChild(createBlockButton("Start", "start", "#00ff00"));
   blockTypeSelector.appendChild(createBlockButton("Finish", "finish", "#0000ff"));
   

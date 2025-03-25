@@ -5,17 +5,18 @@ import { getOverlayActive } from "../components/Overlay.js";
 import { sendMessageToParent, saveBuilderState } from "../utils/helpers.js";
 
 /**
- * Sets up event listeners for all game inputs
+ * Set up all event listeners for the application
  */
 export function setupEventListeners(
   keyState: KeyState,
   buildControls: BuildControls,
   builderMode: boolean,
   gameStarted: boolean,
-  showOverlayFn: () => void,
-  resetControlsFn: () => void,
-  onModeToggleFn: () => void,
-  onWindowResizeFn: () => void
+  pauseCallback: () => void,
+  resetCallback: () => void,
+  toggleGameModeCallback: () => void,
+  resizeCallback: () => void,
+  playOnlyMode: boolean = false
 ): void {
   console.log("Setting up global event listeners");
   
@@ -27,7 +28,10 @@ export function setupEventListeners(
       buildControls,
       builderMode,
       gameStarted,
-      onModeToggleFn
+      pauseCallback,
+      resetCallback,
+      toggleGameModeCallback,
+      playOnlyMode
     );
   });
   
@@ -36,18 +40,18 @@ export function setupEventListeners(
   });
   
   // Window resize
-  window.addEventListener("resize", onWindowResizeFn);
+  window.addEventListener("resize", resizeCallback);
   
   // Focus/blur handlers
   window.addEventListener("blur", () => {
-    showOverlayFn();
-    resetControlsFn();
+    pauseCallback();
+    resetCallback();
   });
   
   // Handle mouse leaving the window
   document.addEventListener("mouseleave", () => {
-    showOverlayFn();
-    resetControlsFn();
+    pauseCallback();
+    resetCallback();
   });
   
   // Message from parent
@@ -68,7 +72,10 @@ export function handleKeyDown(
   buildControls: BuildControls,
   builderMode: boolean,
   gameStarted: boolean,
-  onModeToggleFn: () => void
+  pauseCallback: () => void,
+  resetCallback: () => void,
+  toggleGameModeCallback: () => void,
+  playOnlyMode: boolean = false
 ): void {
   // Get the current builder mode from localStorage in case the builderMode parameter is not updated
   const storedMode = localStorage.getItem('lastMode');
@@ -82,13 +89,13 @@ export function handleKeyDown(
     return;
   }
   
-  // Handle 'B' key for mode switching
-  if (event.key.toLowerCase() === 'b') {
+  // Handle 'B' key for mode switching - disabled in play-only mode
+  if (event.key.toLowerCase() === 'b' && !playOnlyMode) {
     console.log(`B key pressed - toggling modes. Current mode: ${isInBuilderMode ? 'builder' : 'player'}`);
     // console.log(`Current state in localStorage: ${localStorage.getItem('lastMode') || 'not set'}`);
     
     // Call the mode toggle function
-    onModeToggleFn();
+    toggleGameModeCallback();
     
     // Log the mode after toggling (though this won't reflect the change yet)
     // console.log(`Mode after toggle function called: ${builderMode ? 'builder' : 'player'}`);

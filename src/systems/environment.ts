@@ -162,22 +162,21 @@ export function setupCourseTemplate(scene: THREE.Scene, templateSize: string = "
   }
   
   // Create a flat floor platform in the center
-  const floorSize = 20; // Size of the central platform
-  const platformGeometry = new THREE.BoxGeometry(
-    floorSize,
-    BLOCK_TYPES.PLATFORM.size.height,
-    floorSize
+  const floorGeometry = new THREE.BoxGeometry(
+    BLOCK_TYPES.FLOOR_PLATFORM.size.width,
+    BLOCK_TYPES.FLOOR_PLATFORM.size.height,
+    BLOCK_TYPES.FLOOR_PLATFORM.size.depth
   );
-  const platformMaterial = new THREE.MeshStandardMaterial({
-    color: BLOCK_TYPES.PLATFORM.color,
+  const floorMaterial = new THREE.MeshStandardMaterial({
+    color: BLOCK_TYPES.FLOOR_PLATFORM.color,
     roughness: 0.7
   });
   
-  const floorPlatform = new THREE.Mesh(platformGeometry, platformMaterial);
+  const floorPlatform = new THREE.Mesh(floorGeometry, floorMaterial);
   floorPlatform.position.set(0, 0, 0); // Centered at origin
   floorPlatform.receiveShadow = true;
   floorPlatform.castShadow = true;
-  floorPlatform.userData = { type: 'platform' };
+  floorPlatform.userData = { type: 'floor' };
   
   scene.add(floorPlatform);
   blocks.push(floorPlatform);
@@ -194,7 +193,7 @@ export function setupCourseTemplate(scene: THREE.Scene, templateSize: string = "
   });
   
   const startBlock = new THREE.Mesh(startGeometry, startMaterial);
-  startBlock.position.set(-floorSize/2 + 3, 1, 0); // Position at the left edge of the platform
+  startBlock.position.set(-BLOCK_TYPES.FLOOR_PLATFORM.size.width/2 + 3, 1, 0); // Position at the left edge of the platform
   startBlock.receiveShadow = true;
   startBlock.castShadow = true;
   startBlock.userData = { type: 'start' };
@@ -214,7 +213,7 @@ export function setupCourseTemplate(scene: THREE.Scene, templateSize: string = "
   });
   
   const finishBlock = new THREE.Mesh(finishGeometry, finishMaterial);
-  finishBlock.position.set(floorSize/2 - 3, 1, 0); // Position at the right edge of the platform
+  finishBlock.position.set(BLOCK_TYPES.FLOOR_PLATFORM.size.width/2 - 3, 1, 0); // Position at the right edge of the platform
   finishBlock.receiveShadow = true;
   finishBlock.castShadow = true;
   finishBlock.userData = { type: 'finish' };

@@ -1,13 +1,14 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { 
+import {
   PlayerState, 
-  KeyState, 
-  BuildControls, 
+  KeyState,
+  BuildControls,
   TouchJoystick, 
   AnimationActions,
-  BlockData
+  BlockData,
+  BuilderState,
 } from "./utils/types.js";
 import { 
   CAMERA_SETTINGS, 
@@ -133,15 +134,40 @@ let keyState: KeyState = {
 let saveStateTimer = 0;
 const SAVE_STATE_INTERVAL = 10; // Save every 10 seconds
 
+// Add a new variable to track whether the game was initialized in play-only mode
+let playOnlyMode = false;
+
 /**
  * Initialize the game
  */
 function init() {
   console.log("Initializing Three.js scene...");
   
-  // Always start in builder mode by default
-  localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'builder');
-  const templateSize = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
+  // Check URL parameters to determine initial mode
+  const urlParams = new URLSearchParams(window.location.search);
+  const initialMode = urlParams.get('mode');
+  const courseId = urlParams.get('courseId');
+  
+  // Set modes based on URL parameters
+  if (initialMode === 'play' && courseId) {
+    // Initialize in play-only mode
+    playOnlyMode = true;
+    localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'player');
+    console.log("Initializing in play-only mode with course ID:", courseId);
+  } else if (initialMode === 'build') {
+    // Initialize in builder mode
+    playOnlyMode = false;
+    localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'builder');
+    const templateSize = urlParams.get('template') || localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
+    localStorage.setItem(STORAGE_KEYS.BUILDER_TEMPLATE, templateSize);
+    console.log("Initializing in builder mode with template:", templateSize);
+  } else {
+    // Default to builder mode if no specific mode requested
+    playOnlyMode = false;
+    localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'builder');
+    const templateSize = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
+    console.log("No specific mode requested, defaulting to builder mode with template:", templateSize);
+  }
   
   // Detect if on mobile
   isMobile = isMobileDevice();
@@ -193,8 +219,8 @@ function init() {
     player = playerModule.createPlaceholderPlayer(scene);
     console.log("Placeholder player created");
     
-    // Always hide player initially as we'll start in builder mode
-    player.visible = false;
+    // Hide player in builder mode, show in player mode
+    player.visible = localStorage.getItem(STORAGE_KEYS.LAST_MODE) !== 'builder';
   });
   
   // Load player character
@@ -208,8 +234,8 @@ function init() {
     mixer = m;
     actions = a;
     
-    // Always hide player initially as we'll start in builder mode
-    player.visible = false;
+    // Hide player in builder mode, show in player mode
+    player.visible = localStorage.getItem(STORAGE_KEYS.LAST_MODE) !== 'builder';
   });
   
   // Set up event listeners
@@ -221,7 +247,8 @@ function init() {
     () => showOverlay(() => resetAllControls(keyState, buildControls)),
     () => resetAllControls(keyState, buildControls),
     toggleGameMode,
-    handleResize
+    handleResize,
+    playOnlyMode
   );
   
   // Create mobile controls if on mobile
@@ -240,9 +267,25 @@ function init() {
   sendMessageToParent("webViewReady");
   console.log("Sent webViewReady message");
   
-  // Always start in builder mode
-  console.log("Starting in builder mode with template:", templateSize);
-  enterBuilderMode(templateSize);
+  // Initialize in the proper mode based on URL parameters
+  if (playOnlyMode) {
+    // Start in player mode with specified course
+    console.log("Starting in play-only mode");
+    gameStarted = true;
+    builderMode = false;
+    
+    // Load the specified course
+    if (courseId) {
+      // TODO: Implement loading of specific course by ID
+      sendMessageToParent("requestCourse", { courseId });
+      console.log("Requested course data for ID:", courseId);
+    }
+  } else {
+    // Start in builder mode
+    const templateSize = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
+    console.log("Starting in builder mode with template:", templateSize);
+    enterBuilderMode(templateSize);
+  }
 }
 
 /**
@@ -519,7 +562,7 @@ function enterBuilderMode(templateSize: string = "medium") {
     console.log("STORAGE DEBUG - Loading previous builder state with", savedState.blocks.length, "blocks");
     
     // Recreate blocks from saved state (buildingBlocks already cleared above)
-    savedState.blocks.forEach((blockData: BlockData, index) => {
+    savedState.blocks.forEach((blockData: BlockData, index: number) => {
       console.log(`STORAGE DEBUG - Loading block ${index} of type: ${blockData.type} at position:`, blockData.position);
       let geometry, material;
       
@@ -543,6 +586,17 @@ function enterBuilderMode(templateSize: string = "medium") {
           );
           material = new THREE.MeshStandardMaterial({ 
             color: BLOCK_TYPES.FINISH.color,
+            roughness: 0.7
+          });
+          break;
+        case "floor":
+          geometry = new THREE.BoxGeometry(
+            BLOCK_TYPES.FLOOR_PLATFORM.size.width, 
+            BLOCK_TYPES.FLOOR_PLATFORM.size.height, 
+            BLOCK_TYPES.FLOOR_PLATFORM.size.depth
+          );
+          material = new THREE.MeshStandardMaterial({ 
+            color: BLOCK_TYPES.FLOOR_PLATFORM.color,
             roughness: 0.7
           });
           break;
@@ -868,6 +922,119 @@ function exitBuilderMode() {
   
   // Show notification
   showNotification("Player Mode Activated", 3000);
+}
+
+/**
+ * Handle received course data
+ */
+function handleCourseData(courseData: any): void {
+  console.log("Received course data:", courseData);
+  
+  // Clear existing environment
+  clearEnvironment(scene);
+  
+  // Create ground
+  createGround(scene);
+  
+  // Clear existing blocks
+  buildingBlocks = [];
+  platforms = [];
+  
+  // Create blocks from course data
+  if (courseData && courseData.blocks && Array.isArray(courseData.blocks)) {
+    courseData.blocks.forEach((blockData: BlockData, index: number) => {
+      console.log(`Loading course block ${index} of type: ${blockData.type}`);
+      let geometry, material;
+      
+      switch(blockData.type) {
+        case "start":
+          geometry = new THREE.BoxGeometry(
+            BLOCK_TYPES.START.size.width, 
+            BLOCK_TYPES.START.size.height, 
+            BLOCK_TYPES.START.size.depth
+          );
+          material = new THREE.MeshStandardMaterial({ 
+            color: BLOCK_TYPES.START.color,
+            roughness: 0.7
+          });
+          break;
+        case "finish":
+          geometry = new THREE.BoxGeometry(
+            BLOCK_TYPES.FINISH.size.width, 
+            BLOCK_TYPES.FINISH.size.height, 
+            BLOCK_TYPES.FINISH.size.depth
+          );
+          material = new THREE.MeshStandardMaterial({ 
+            color: BLOCK_TYPES.FINISH.color,
+            roughness: 0.7
+          });
+          break;
+        case "floor":
+          geometry = new THREE.BoxGeometry(
+            BLOCK_TYPES.FLOOR_PLATFORM.size.width, 
+            BLOCK_TYPES.FLOOR_PLATFORM.size.height, 
+            BLOCK_TYPES.FLOOR_PLATFORM.size.depth
+          );
+          material = new THREE.MeshStandardMaterial({ 
+            color: BLOCK_TYPES.FLOOR_PLATFORM.color,
+            roughness: 0.7
+          });
+          break;
+        case "platform":
+        default:
+          geometry = new THREE.BoxGeometry(
+            BLOCK_TYPES.PLATFORM.size.width, 
+            BLOCK_TYPES.PLATFORM.size.height, 
+            BLOCK_TYPES.PLATFORM.size.depth
+          );
+          material = new THREE.MeshStandardMaterial({ 
+            color: BLOCK_TYPES.PLATFORM.color,
+            roughness: 0.7
+          });
+      }
+      
+      const block = new THREE.Mesh(geometry, material);
+      block.position.set(blockData.position.x, blockData.position.y, blockData.position.z);
+      block.userData = { type: blockData.type };
+      block.castShadow = true;
+      block.receiveShadow = true;
+      
+      scene.add(block);
+      buildingBlocks.push(block);
+      
+      // Add to platforms for collision detection
+      platforms.push(block);
+    });
+    
+    // If there's a start position, place player there
+    if (courseData.startPosition) {
+      if (player) {
+        player.position.set(
+          courseData.startPosition.x,
+          courseData.startPosition.y,
+          courseData.startPosition.z
+        );
+        player.visible = true;
+      }
+      
+      // Update player state
+      playerState.position.set(
+        courseData.startPosition.x,
+        courseData.startPosition.y,
+        courseData.startPosition.z
+      );
+    }
+    
+    // Set game as started
+    gameStarted = true;
+    builderMode = false;
+    
+    // Show notification
+    showNotification("Course loaded! Ready to play!", 3000);
+  } else {
+    console.error("Invalid course data received");
+    showNotification("Error loading course", 3000);
+  }
 }
 
 // Initialize the game
