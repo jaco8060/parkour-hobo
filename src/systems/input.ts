@@ -336,15 +336,37 @@ export function setupBuilderMouseHandlers(
   let lastMouseX = 0;
   let lastMouseY = 0;
   let dragDistance = 0; // Track drag distance to distinguish clicks from drags
+  let isRecentToolClick = false; // Flag to track recent toolbar clicks
   
   // Set camera's euler order to YXZ to prevent gimbal lock and maintain proper rotation
   camera.rotation.order = "YXZ";
   
   // Left click to place or remove blocks
   container.addEventListener('click', (event) => {
-    // Instead of preventing block placement during any mouse down, 
-    // only prevent it during right-click drag (camera rotation)
-    if (event.button === 0 && !isRightMouseDown) {
+    // Only process clicks if we're in builder mode
+    const isBuilderMode = localStorage.getItem('lastMode') === 'builder';
+    if (!isBuilderMode) return;
+    
+    // Check if click is on the toolbar or UI elements
+    const target = event.target as HTMLElement;
+    const isToolbarClick = target.closest('#builder-toolbar') !== null;
+    const isUIClick = target.closest('#builder-ui') !== null;
+    
+    // Also check if there was a recent tool click by checking for the recent-tool-click class
+    const hasRecentToolClick = container.classList.contains("recent-tool-click");
+    
+    // Don't place blocks if clicking on UI elements or right after a tool change
+    if (isToolbarClick || isUIClick || hasRecentToolClick) {
+      isRecentToolClick = true;
+      // Clear the flag after a short delay to prevent accidental placements
+      setTimeout(() => {
+        isRecentToolClick = false;
+      }, 250);
+      return;
+    }
+    
+    // Prevent block placement if it's a recent tool click or during right-click drag
+    if (event.button === 0 && !isRightMouseDown && !isRecentToolClick) {
       placeBlockFn();
       removeBlockFn();
     }
@@ -352,6 +374,16 @@ export function setupBuilderMouseHandlers(
   
   // Mouse controls for camera rotation - only track right mouse button
   container.addEventListener('mousedown', (event) => {
+    // Check if click is on toolbar or UI
+    const target = event.target as HTMLElement;
+    const isToolbarClick = target.closest('#builder-toolbar') !== null;
+    const isUIClick = target.closest('#builder-ui') !== null;
+    
+    // Don't handle camera rotation if clicking UI elements
+    if (isToolbarClick || isUIClick) {
+      return;
+    }
+    
     if (event.button === 2) { // Right click
       isRightMouseDown = true;
       lastMouseX = event.clientX;

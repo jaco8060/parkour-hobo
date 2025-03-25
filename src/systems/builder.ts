@@ -399,9 +399,13 @@ export function highlightBlockForRemoval(
       delete block.userData.originalMaterial;
     }
     
-    // Remove any outline effect
+    // Remove any outline effect and cancel animation
     const outline = block.children.find(child => child.userData?.type === 'outline');
     if (outline) {
+      // Cancel any ongoing animation
+      if (outline.userData && outline.userData.animationFrameId) {
+        cancelAnimationFrame(outline.userData.animationFrameId);
+      }
       block.remove(outline);
     }
   });
@@ -482,22 +486,28 @@ function createBlockOutline(block: THREE.Mesh): void {
   // Add to block
   block.add(outline);
   
-  // Create pulse animation
+  // Create and store the animation function on the outline object
   const startTime = Date.now();
+  
+  // Define the animation function
   function pulseOutline() {
     if (!block.parent) {
       // Block has been removed, stop animation
       return;
     }
     
+    // Calculate scale based on time
     const elapsedTime = (Date.now() - startTime) / 1000;
     const scale = 1 + 0.1 * Math.sin(elapsedTime * 5);
     
+    // Apply scale to outline
     outline.scale.set(scale, scale, scale);
-    requestAnimationFrame(pulseOutline);
+    
+    // Use outline's userData to store the animation frame ID for later cancellation
+    outline.userData.animationFrameId = requestAnimationFrame(pulseOutline);
   }
   
-  // Start pulse animation
+  // Start the animation
   pulseOutline();
 }
 
@@ -509,6 +519,13 @@ export function removeBlock(
   buildingBlocks: THREE.Mesh[],
   platforms: THREE.Mesh[]
 ): void {
+  // Only allow block removal in builder mode
+  const isBuilderMode = localStorage.getItem('lastMode') === 'builder';
+  if (!isBuilderMode) {
+    console.log("Cannot remove blocks when not in builder mode");
+    return;
+  }
+  
   console.log("BLOCK DEBUG - Remove - Building blocks before:", buildingBlocks.length);
   console.log("BLOCK DEBUG - Remove - Platforms before:", platforms.length);
   
@@ -524,6 +541,12 @@ export function removeBlock(
   const blockIndex = buildingBlocks.indexOf(blockToRemove);
   
   if (blockIndex !== -1) {
+    // Cancel any animations before removing
+    const outline = blockToRemove.children.find(child => child.userData?.type === 'outline');
+    if (outline && outline.userData && outline.userData.animationFrameId) {
+      cancelAnimationFrame(outline.userData.animationFrameId);
+    }
+    
     // Remove from scene
     scene.remove(blockToRemove);
     
@@ -1052,7 +1075,23 @@ export function createBuilderToolbar(
       `<div style="font-size: 24px">${tool.icon}</div><div>${tool.label}</div>`
     );
     
-    button.addEventListener("click", () => {
+    button.addEventListener("click", (event) => {
+      // Prevent the event from bubbling up to the container's click handler
+      event.stopPropagation();
+      
+      // Prevent accidental block placement by temporarily disabling the click handler
+      const containerElement = document.getElementById("game-container");
+      if (containerElement) {
+        // Add a class to the container to mark it as recently clicked
+        containerElement.classList.add("recent-tool-click");
+        
+        // Remove the class after a short delay
+        setTimeout(() => {
+          containerElement.classList.remove("recent-tool-click");
+        }, 250);
+      }
+      
+      // Call the tool change callback
       onToolChange(tool.id);
     });
     

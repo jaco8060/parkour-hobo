@@ -143,6 +143,9 @@ let playOnlyMode = false;
 function init() {
   console.log("Initializing Three.js scene...");
   
+  // Clear any stale highlighted block reference
+  window.__targetedBlockForRemoval = null;
+  
   // Check URL parameters to determine initial mode
   const urlParams = new URLSearchParams(window.location.search);
   const initialMode = urlParams.get('mode');
@@ -330,17 +333,16 @@ function animate() {
   }
   
   if (builderMode) {
-    // Update builder camera movement
+    // Update builder camera based on controls
     updateBuilderCamera(camera, buildControls, deltaTime);
     
-    // Update placement preview position
-    if (placementPreview) {
-      const allObjects = [];
+    // Update placement preview if in build mode
+    if (placementPreview && currentBuilderTool === "build") {
+      // Create a list of all objects that can be interacted with
+      const allObjects: THREE.Mesh[] = [];
       
-      // Add building blocks to intersectables (for preview placement)
-      buildingBlocks.forEach(block => {
-        allObjects.push(block);
-      });
+      // Add building blocks as potential targets
+      allObjects.push(...buildingBlocks);
       
       // Add any platforms that aren't already in buildingBlocks (from environment)
       platforms.forEach(platform => {
@@ -361,11 +363,11 @@ function animate() {
       
       // Make sure visibility matches the current tool
       placementPreview.visible = currentBuilderTool === "build";
-      
-      // Handle block highlighting for remove mode
-      if (currentBuilderTool === "remove") {
-        highlightBlockForRemoval(camera, buildingBlocks, BUILDER_SETTINGS.REMOVAL_RANGE);
-      }
+    }
+    
+    // If in remove mode, highlight the block being targeted
+    if (currentBuilderTool === "remove") {
+      highlightBlockForRemoval(camera, buildingBlocks, BUILDER_SETTINGS.REMOVAL_RANGE);
     }
   } else if (gameStarted && player) {
     // Regular game update
@@ -714,6 +716,26 @@ function enterBuilderMode(templateSize: string = "medium") {
     createBuilderToolbar(
       currentBuilderTool,
       (tool: string) => {
+        // If switching away from remove tool, clear any highlighted blocks
+        if (currentBuilderTool === "remove" && tool !== "remove") {
+          // Reset all previously highlighted blocks
+          buildingBlocks.forEach(block => {
+            if (block.userData.originalMaterial) {
+              block.material = block.userData.originalMaterial;
+              delete block.userData.originalMaterial;
+            }
+            
+            // Remove any outline effect
+            const outline = block.children.find(child => child.userData?.type === 'outline');
+            if (outline) {
+              block.remove(outline);
+            }
+          });
+          
+          // Clear the targeted block reference
+          window.__targetedBlockForRemoval = null;
+        }
+        
         currentBuilderTool = tool;
         updateToolbarSelection(currentBuilderTool);
         
@@ -863,6 +885,27 @@ function exitBuilderMode() {
     buildingBlocks
   );
   
+  // Clear any highlighted blocks from the remove tool
+  buildingBlocks.forEach(block => {
+    if (block.userData.originalMaterial) {
+      block.material = block.userData.originalMaterial;
+      delete block.userData.originalMaterial;
+    }
+    
+    // Remove any outline effect and cancel animations
+    const outline = block.children.find(child => child.userData?.type === 'outline');
+    if (outline) {
+      // Cancel any ongoing animation
+      if (outline.userData && outline.userData.animationFrameId) {
+        cancelAnimationFrame(outline.userData.animationFrameId);
+      }
+      block.remove(outline);
+    }
+  });
+  
+  // Clear the global targeted block reference
+  window.__targetedBlockForRemoval = null;
+  
   builderMode = false;
   gameStarted = true;
   
@@ -929,6 +972,9 @@ function exitBuilderMode() {
  */
 function handleCourseData(courseData: any): void {
   console.log("Received course data:", courseData);
+  
+  // Clear any highlighted blocks
+  window.__targetedBlockForRemoval = null;
   
   // Clear existing environment
   clearEnvironment(scene);
