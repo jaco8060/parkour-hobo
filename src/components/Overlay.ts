@@ -7,7 +7,8 @@ let isOverlayActive = false;
  * Creates and shows the game overlay
  */
 export function showOverlay(
-  resetControlsFn: () => void
+  resetControlsFn: () => void,
+  isBuilderMode: boolean = false
 ): void {
   if (isOverlayActive) return;
   
@@ -34,6 +35,27 @@ export function showOverlay(
     }
   );
   
+  // Different content based on mode
+  let messageContent = "";
+  
+  if (isBuilderMode) {
+    // Minimal content for builder mode
+    messageContent = "Click to continue building";
+  } else {
+    // Full instructions for player mode
+    messageContent = `
+      <div style="text-align: center;">
+        <h2 style="margin-bottom: 10px; color: #4CAF50;">Parkour Challenge</h2>
+        <div style="margin-bottom: 20px;">
+          <p>Use <b>WASD</b> to move</p>
+          <p><b>Space</b> to jump</p>
+          <p>Hold <b>Shift</b> to sprint</p>
+        </div>
+        <p style="font-style: italic; font-size: 0.9em;">Click to start playing</p>
+      </div>
+    `;
+  }
+  
   const message = createElement("div", 
     {},
     {
@@ -43,9 +65,10 @@ export function showOverlay(
       padding: "20px",
       backgroundColor: "rgba(0, 0, 0, 0.5)",
       borderRadius: "10px",
-      border: "2px solid white"
+      border: "2px solid white",
+      maxWidth: "400px"
     },
-    "Click to play"
+    messageContent
   );
   
   overlay.appendChild(message);

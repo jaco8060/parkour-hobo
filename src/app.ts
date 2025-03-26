@@ -204,11 +204,11 @@ function init() {
     console.log("Renderer appended to #game-container");
     
     // Add focus/blur handlers
-    window.addEventListener("blur", () => showOverlay(() => resetAllControls(keyState, buildControls)));
-    container.addEventListener("mouseleave", () => showOverlay(() => resetAllControls(keyState, buildControls)));
+    window.addEventListener("blur", () => showOverlay(() => resetAllControls(keyState, buildControls), builderMode));
+    container.addEventListener("mouseleave", () => showOverlay(() => resetAllControls(keyState, buildControls), builderMode));
     
     // Show initial overlay
-    showOverlay(() => resetAllControls(keyState, buildControls));
+    showOverlay(() => resetAllControls(keyState, buildControls), builderMode);
   } else {
     console.error("No #game-container found!");
     return;
@@ -247,7 +247,7 @@ function init() {
     buildControls,
     builderMode,
     gameStarted,
-    () => showOverlay(() => resetAllControls(keyState, buildControls)),
+    () => showOverlay(() => resetAllControls(keyState, buildControls), builderMode),
     () => resetAllControls(keyState, buildControls),
     toggleGameMode,
     handleResize,
@@ -264,11 +264,11 @@ function init() {
   }
   
   // Start animation loop
-  animate();
+      animate();
   
   // Send ready message
   sendMessageToParent("webViewReady");
-  console.log("Sent webViewReady message");
+      console.log("Sent webViewReady message");
   
   // Initialize in the proper mode based on URL parameters
   if (playOnlyMode) {
