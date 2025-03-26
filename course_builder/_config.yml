@@ -1,9 +1,0 @@
-theme: jekyll-theme-minimal
-title: Parkour Hobo Course Builder
-description: A standalone builder for creating Parkour Hobo courses for Reddit
-show_downloads: false
-github:
-  is_project_page: true
-  repository_url: https://github.com/username/parkour-hobo
-  owner_url: https://github.com/username
-  owner_name: username 

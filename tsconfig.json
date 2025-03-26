@@ -6,6 +6,6 @@
     "allowJs": true,
     "lib": ["dom", "esnext"] // Added "dom" for window/document
   },
-  "include": ["./src/**/*"],
+  "include": ["./src/**/*", "gh-pages/src/components/MobileControls.ts", "gh-pages/src/app.ts"],
   "exclude": ["node_modules"] // Ensure node_modules isn’t checked
 }

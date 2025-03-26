@@ -1,6 +1,6 @@
 // Mobile controls component for touch interfaces
-import { createElement } from "../utils/helpers.js";
-import { KeyState, TouchJoystick } from "../utils/types.js";
+import { createElement } from "../../../src/utils/helpers.js";
+import { KeyState, TouchJoystick } from "../../../src/utils/types.js";
 
 /**
  * Creates mobile joystick and button controls
