@@ -8,6 +8,10 @@
     <meta charset="UTF-8" />
     <title>Parkour Hobo - 3D Platformer</title>
     <link rel="stylesheet" href="/src/style.css" />
+    <!-- Add pixelated font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
       /* Builder mode styles */
       #builder-ui {
@@ -19,6 +23,34 @@
         padding: 15px;
         border-radius: 8px;
         z-index: 100;
+      }
+      
+      /* Pixelated menu styles */
+      #pixelated-menu {
+        font-family: 'Press Start 2P', cursive;
+        image-rendering: pixelated;
+      }
+      
+      #pixelated-menu button {
+        transition: transform 0.1s, background-color 0.2s;
+      }
+      
+      #pixelated-menu button:hover {
+        transform: scale(1.05);
+      }
+      
+      #pixelated-menu button:active {
+        transform: scale(0.95);
+      }
+      
+      /* Custom modal styles for course saving */
+      #modal-box input {
+        width: 100%;
+        padding: 8px;
+        margin-top: 5px;
+        background-color: #333;
+        color: white;
+        border: 1px solid #444;
       }
       
       .block-button {
@@ -66,6 +98,13 @@
         line-height: 1.4;
       }
     </style>
+    <script>
+      // Prevent right-click context menu globally
+      document.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        return false;
+      }, true);
+    </script>
   </head>
   <body tabindex="0">
     <div id="game-container" tabindex="0"></div>
@@ -80,11 +119,18 @@
             gameContainer.focus();
           });
           
-          // Log keyboard events for debugging
-          document.addEventListener('keydown', function(e) {
-            console.log('Keydown event:', e.key);
-          });
+          // Prevent context menu (right-click)
+          gameContainer.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            return false;
+          }, true);
         }
+        
+        // Also prevent context menu on the document body
+        document.body.addEventListener('contextmenu', function(e) {
+          e.preventDefault();
+          return false;
+        }, true);
       });
     </script>
     <script type="module" src="/src/app.ts"></script>

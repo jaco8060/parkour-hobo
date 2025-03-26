@@ -1,8 +1,9 @@
 // Builder system to handle builder mode functionality
 import * as THREE from "three";
 import { BLOCK_TYPES, BUILDER_SETTINGS } from "../utils/config.js";
-import { createElement, removeElement, sendMessageToParent, saveBuilderState } from "../utils/helpers.js";
-import { BlockData, BuildControls, CourseData } from "../utils/types.js";
+import { createElement, removeElement, sendMessageToParent, saveBuilderState, loadSavedCourses, saveSavedCourses, convertBuilderStateToSavedCourse } from "../utils/helpers.js";
+import { BlockData, BuildControls, CourseData, SavedCourse } from "../utils/types.js";
+import { showNotification } from "../components/Overlay.js";
 
 // Declare global window property for targeted block
 declare global {
@@ -649,7 +650,7 @@ export function createBuilderUI(
       padding: "15px",
       borderRadius: "8px",
       zIndex: "100",
-      maxWidth: "250px"
+      maxWidth: "300px"
     }
   );
   
@@ -881,7 +882,94 @@ export function createBuilderUI(
     },
     "Save Course"
   );
-  saveButton.addEventListener("click", saveFn);
+  saveButton.addEventListener("click", () => {
+    import('../components/Overlay.js').then(overlayModule => {
+      // Reset all controls when opening the modal 
+      import('../systems/input.js').then(inputModule => {
+        inputModule.resetAllControls(keyState, buildControls);
+      });
+      
+      // Show the modal with pixelated form styling but cleaner background
+      overlayModule.showModal("Save Course", `
+        <div style="display: flex; flex-direction: column; gap: 20px; padding: 15px; background-color: rgba(0, 0, 0, 0.5); border-radius: 8px; border: 2px solid #4CAF50;">
+          <label for="course-name" style="margin-bottom: 5px; display: block; color: white; text-shadow: 2px 2px 0 #000;">Course Name:</label>
+          <input type="text" id="course-name" style="padding: 12px; font-size: 16px; border: 2px solid #4CAF50; background: #333; color: white; border-radius: 4px; font-family: 'Press Start 2P', monospace;" 
+                placeholder="My Awesome Course"/>
+          <div style="display: flex; justify-content: center; margin-top: 15px;">
+            <button id="save-course-btn" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-family: 'Press Start 2P', monospace; box-shadow: 3px 3px 0 #333; transition: transform 0.1s;">Save Course</button>
+          </div>
+          <p style="color: #aaa; font-size: 10px; margin-top: 10px; text-align: center;">Press ESC or click outside to cancel</p>
+        </div>
+      `);
+      
+      // Add event listeners for the save button and input field with hover effects
+      setTimeout(() => {
+        const input = document.getElementById("course-name") as HTMLInputElement;
+        const saveBtn = document.getElementById("save-course-btn");
+        
+        if (input) {
+          // Make sure the input is focused
+          input.focus();
+          
+          // Submit on Enter key
+          input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              
+              const courseName = input.value.trim();
+              if (courseName) {
+                saveCurrentCourse(courseName, buildingBlocks, selectedBlockType);
+                // Close the modal after saving - using global reference
+                if ((window as any).__closeCurrentModal) {
+                  (window as any).__closeCurrentModal();
+                } else {
+                  overlayModule.removeElement("modal-overlay");
+                }
+              } else {
+                overlayModule.showNotification("Please enter a course name", 3000);
+              }
+            }
+          });
+        }
+        
+        if (saveBtn) {
+          // Add hover effects
+          saveBtn.addEventListener("mouseover", () => {
+            (saveBtn as HTMLElement).style.transform = "scale(1.05)";
+          });
+          
+          saveBtn.addEventListener("mouseout", () => {
+            (saveBtn as HTMLElement).style.transform = "scale(1)";
+          });
+          
+          saveBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            
+            const courseNameInput = document.getElementById("course-name") as HTMLInputElement;
+            const courseName = courseNameInput?.value?.trim() || "";
+            
+            if (courseName) {
+              saveCurrentCourse(courseName, buildingBlocks, selectedBlockType);
+              
+              // Close the modal after saving - using global reference
+              if ((window as any).__closeCurrentModal) {
+                (window as any).__closeCurrentModal();
+              } else {
+                overlayModule.removeElement("modal-overlay");
+              }
+            } else {
+              overlayModule.showNotification("Please enter a course name", 3000);
+              
+              // Re-focus the input
+              setTimeout(() => {
+                courseNameInput?.focus();
+              }, 100);
+            }
+          });
+        }
+      }, 100);
+    });
+  });
   buttonGroup.appendChild(saveButton);
   
   // Exit builder button
@@ -899,43 +987,7 @@ export function createBuilderUI(
   );
   exitButton.addEventListener("click", exitBuilderModeFn);
   buttonGroup.appendChild(exitButton);
-  
-  // Reset localStorage button
-  const resetButton = createElement("button", 
-    {},
-    {
-      padding: "8px",
-      backgroundColor: "#f44336",
-      color: "white",
-      border: "none",
-      borderRadius: "4px",
-      cursor: "pointer",
-      fontSize: "0.9em"
-    },
-    "Reset Storage"
-  );
-  
-  resetButton.addEventListener("click", () => {
-    if (confirm("This will reset all saved builder data. Continue?")) {
-      try {
-        // Import not available here, so access through window
-        if (typeof (window as any).resetBuilderLocalStorage === 'function') {
-          (window as any).resetBuilderLocalStorage();
-        } else {
-          localStorage.removeItem('builderState');
-          localStorage.removeItem('builderTemplate');
-          localStorage.removeItem('lastMode');
-          localStorage.removeItem('gridSnap');
-          localStorage.removeItem('gridSize');
-        }
-        alert("Storage reset successful. Refresh the page to see changes.");
-      } catch (error) {
-        console.error("Failed to reset localStorage:", error);
-        alert("Failed to reset storage. Error: " + error);
-      }
-    }
-  });
-  buttonGroup.appendChild(resetButton);
+
   
   builderUI.appendChild(buttonGroup);
   
@@ -1285,4 +1337,32 @@ export function updateCrosshair(tool: string): void {
       crosshair.style.display = "none";
       break;
   }
+}
+
+/**
+ * Save the current course with a name
+ */
+export function saveCurrentCourse(
+  courseName: string, 
+  buildingBlocks: THREE.Mesh[], 
+  courseTemplate: string
+): void {
+  const courseData = convertBuilderStateToSavedCourse(courseName, buildingBlocks, courseTemplate);
+  
+  if (!courseData) {
+    showNotification("Course must have start and finish blocks", 3000);
+    return;
+  }
+  
+  const savedCourses = loadSavedCourses();
+  const existingIndex = savedCourses.findIndex(course => course.name === courseName);
+  
+  if (existingIndex !== -1) {
+    savedCourses[existingIndex] = courseData; // Overwrite if name exists
+  } else {
+    savedCourses.push(courseData); // Add new course
+  }
+  
+  saveSavedCourses(savedCourses);
+  showNotification(`Course "${courseName}" saved successfully!`, 3000);
 } 

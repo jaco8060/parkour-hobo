@@ -9,6 +9,7 @@ import {
   AnimationActions,
   BlockData,
   BuilderState,
+  SavedCourse
 } from "./utils/types.js";
 import { 
   CAMERA_SETTINGS, 
@@ -24,7 +25,10 @@ import {
   removeElement, 
   saveBuilderState, 
   sendMessageToParent,
-  resetBuilderLocalStorage
+  resetBuilderLocalStorage,
+  saveSavedCourses,
+  loadSavedCourses,
+  clearBuilderState
 } from "./utils/helpers.js";
 import { 
   setupLighting, 
@@ -56,7 +60,8 @@ import {
   createBuilderDebugUI,
   createCrosshair,
   updateCrosshair,
-  highlightBlockForRemoval
+  highlightBlockForRemoval,
+  saveCurrentCourse
 } from "./systems/builder.js";
 import { 
   setupEventListeners, 
@@ -67,7 +72,8 @@ import {
   showOverlay, 
   hideOverlay, 
   getOverlayActive, 
-  showNotification 
+  showNotification,
+  showModal
 } from "./components/Overlay.js";
 import { 
   createMobileControls, 
@@ -75,6 +81,7 @@ import {
   updateKeyStatesFromJoystick, 
   setupMobileBuilderControls 
 } from "./components/MobileControls.js";
+import { showMainMenu } from "./menu.js";
 
 // Game state
 let scene: THREE.Scene;
@@ -137,6 +144,10 @@ const SAVE_STATE_INTERVAL = 10; // Save every 10 seconds
 // Add a new variable to track whether the game was initialized in play-only mode
 let playOnlyMode = false;
 
+// Make them globally accessible for resetting by the modal
+(window as any).__gameKeyState = keyState;
+(window as any).__gameBuildControls = buildControls;
+
 /**
  * Initialize the game
  */
@@ -150,28 +161,60 @@ function init() {
   const urlParams = new URLSearchParams(window.location.search);
   const initialMode = urlParams.get('mode');
   const courseId = urlParams.get('courseId');
+  const skipMenu = urlParams.get('skipMenu') === 'true';
   
-  // Set modes based on URL parameters
+  // Setup basic scene
+  initBasicScene();
+  
+  // Decide what to show first
   if (initialMode === 'play' && courseId) {
     // Initialize in play-only mode
     playOnlyMode = true;
     localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'player');
     console.log("Initializing in play-only mode with course ID:", courseId);
-  } else if (initialMode === 'build') {
-    // Initialize in builder mode
+    initGameplay();
+  } else if (initialMode === 'build' && skipMenu) {
+    // Initialize in builder mode directly
     playOnlyMode = false;
     localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'builder');
     const templateSize = urlParams.get('template') || localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
     localStorage.setItem(STORAGE_KEYS.BUILDER_TEMPLATE, templateSize);
     console.log("Initializing in builder mode with template:", templateSize);
+    enterBuilderMode(templateSize);
   } else {
-    // Default to builder mode if no specific mode requested
-    playOnlyMode = false;
-    localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'builder');
-    const templateSize = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
-    console.log("No specific mode requested, defaulting to builder mode with template:", templateSize);
+    // Show the pixelated menu
+    import('./menu.js').then(menuModule => {
+      menuModule.showMainMenu(
+        // Load course callback
+        (course) => {
+          console.log("Loading course:", course.name);
+          document.getElementById("pixelated-menu")?.remove();
+          enterBuilderMode(course.template, course);
+        },
+        // Create new course callback
+        (template) => {
+          console.log("Creating new course with template:", template);
+          document.getElementById("pixelated-menu")?.remove();
+          clearBuilderState(); // This was the missing function call
+          localStorage.removeItem(STORAGE_KEYS.BUILDER_STATE);
+          enterBuilderMode(template);
+        }
+      );
+    });
   }
   
+  // Start animation loop (always runs even with menu showing)
+  animate();
+  
+  // Send ready message
+  sendMessageToParent("webViewReady");
+  console.log("Sent webViewReady message");
+}
+
+/**
+ * Initialize the basic scene and renderer
+ */
+function initBasicScene() {
   // Detect if on mobile
   isMobile = isMobileDevice();
   
@@ -203,36 +246,32 @@ function init() {
     container.appendChild(renderer.domElement);
     console.log("Renderer appended to #game-container");
     
-    // Add focus/blur handlers
-    window.addEventListener("blur", () => showOverlay(() => resetAllControls(keyState, buildControls), builderMode));
-    container.addEventListener("mouseleave", () => showOverlay(() => resetAllControls(keyState, buildControls), builderMode));
-    
-    // Show initial overlay
-    showOverlay(() => resetAllControls(keyState, buildControls), builderMode);
+    // Setup event listeners
+    setupEventListeners(
+      keyState,
+      buildControls,
+      builderMode,
+      gameStarted,
+      () => showOverlay(() => resetAllControls(keyState, buildControls), builderMode),
+      () => resetAllControls(keyState, buildControls),
+      toggleGameMode,
+      handleResize,
+      playOnlyMode
+    );
   } else {
     console.error("No #game-container found!");
-    return;
   }
   
-  // Lighting
+  // Set up basic lighting
   setupLighting(scene);
-  
-  // Create a placeholder player immediately - will be replaced when model loads
-  import('./systems/player.js').then(playerModule => {
-    player = playerModule.createPlaceholderPlayer(scene);
-    console.log("Placeholder player created");
-    
-    // Hide player in builder mode, show in player mode
-    player.visible = localStorage.getItem(STORAGE_KEYS.LAST_MODE) !== 'builder';
-  });
-  
+}
+
+/**
+ * Initialize the gameplay elements
+ */
+function initGameplay() {
   // Load player character
   loadPlayerCharacter(scene, (p: THREE.Object3D, m: THREE.AnimationMixer, a: AnimationActions) => {
-    // Remove placeholder if it exists
-    if (player) {
-      scene.remove(player);
-    }
-    
     player = p;
     mixer = m;
     actions = a;
@@ -241,18 +280,15 @@ function init() {
     player.visible = localStorage.getItem(STORAGE_KEYS.LAST_MODE) !== 'builder';
   });
   
-  // Set up event listeners
-  setupEventListeners(
-    keyState,
-    buildControls,
-    builderMode,
-    gameStarted,
-    () => showOverlay(() => resetAllControls(keyState, buildControls), builderMode),
-    () => resetAllControls(keyState, buildControls),
-    toggleGameMode,
-    handleResize,
-    playOnlyMode
-  );
+  // Set game started flag
+  gameStarted = true;
+  builderMode = false;
+  
+  // Create ground
+  createGround(scene);
+  
+  // Show initial overlay with instructions
+  showOverlay(() => resetAllControls(keyState, buildControls), builderMode);
   
   // Create mobile controls if on mobile
   if (isMobile) {
@@ -261,33 +297,6 @@ function init() {
       createMobileControls(gameContainer, keyState, touchJoystick);
       setupMobileTouchHandlers(gameContainer, keyState, touchJoystick, joystickPosition);
     }
-  }
-  
-  // Start animation loop
-      animate();
-  
-  // Send ready message
-  sendMessageToParent("webViewReady");
-      console.log("Sent webViewReady message");
-  
-  // Initialize in the proper mode based on URL parameters
-  if (playOnlyMode) {
-    // Start in player mode with specified course
-    console.log("Starting in play-only mode");
-    gameStarted = true;
-    builderMode = false;
-    
-    // Load the specified course
-    if (courseId) {
-      // TODO: Implement loading of specific course by ID
-      sendMessageToParent("requestCourse", { courseId });
-      console.log("Requested course data for ID:", courseId);
-    }
-  } else {
-    // Start in builder mode
-    const templateSize = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
-    console.log("Starting in builder mode with template:", templateSize);
-    enterBuilderMode(templateSize);
   }
 }
 
@@ -516,15 +525,15 @@ function toggleGameMode() {
 /**
  * Enter builder mode
  */
-function enterBuilderMode(templateSize: string = "medium") {
-  console.log("Entering builder mode with template:", templateSize);
+function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCourse): void {
+  console.log("Entering builder mode with template:", templateSize, courseData ? `and course: ${courseData.name}` : "");
   builderMode = true;
   gameStarted = false;
-  courseTemplate = templateSize;
+  courseTemplate = courseData ? courseData.template : templateSize;
 
   // Immediately update the localStorage with the current mode
   localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'builder');
-  localStorage.setItem(STORAGE_KEYS.BUILDER_TEMPLATE, templateSize);
+  localStorage.setItem(STORAGE_KEYS.BUILDER_TEMPLATE, courseTemplate);
 
   // Hide player
   if (player) {
@@ -537,22 +546,13 @@ function enterBuilderMode(templateSize: string = "medium") {
   // Clear existing environment
   clearEnvironment(scene);
   
-  // Skip creating ground since we'll have a platform floor
-  // createGround(scene);
-  
   // Clear out existing blocks
-  console.log("STORAGE DEBUG - Clearing existing building blocks, current count:", buildingBlocks.length);
-  console.log("STORAGE DEBUG - Platforms array length before clearing:", platforms.length);
   buildingBlocks = [];
   platforms = [];
-  console.log("STORAGE DEBUG - Platforms array length after clearing:", platforms.length);
-  
-  // Try to load existing builder state first
-  const savedState = loadBuilderState();
   
   // Find the template size
   let templateSizeValue = TEMPLATE_SIZES.MEDIUM;
-  switch(templateSize) {
+  switch(courseTemplate) {
     case "small": templateSizeValue = TEMPLATE_SIZES.SMALL; break;
     case "large": templateSizeValue = TEMPLATE_SIZES.LARGE; break;
   }
@@ -560,11 +560,12 @@ function enterBuilderMode(templateSize: string = "medium") {
   // Create builder grid for accurate placement
   createBuilderGrid(scene, templateSizeValue);
   
-  if (savedState && savedState.blocks && savedState.blocks.length > 0) {
-    console.log("STORAGE DEBUG - Loading previous builder state with", savedState.blocks.length, "blocks");
+  // Loading approach depends on whether we have a saved course or need to use local storage
+  if (courseData) {
+    console.log("STORAGE DEBUG - Loading course from provided data with", courseData.blocks.length, "blocks");
     
-    // Recreate blocks from saved state (buildingBlocks already cleared above)
-    savedState.blocks.forEach((blockData: BlockData, index: number) => {
+    // Create blocks from course data
+    courseData.blocks.forEach((blockData, index) => {
       console.log(`STORAGE DEBUG - Loading block ${index} of type: ${blockData.type} at position:`, blockData.position);
       let geometry, material;
       
@@ -630,53 +631,132 @@ function enterBuilderMode(templateSize: string = "medium") {
       }
     });
     
-    // Restore camera position if saved
-    if (savedState.cameraPosition) {
-      camera.position.set(
-        savedState.cameraPosition.x,
-        savedState.cameraPosition.y,
-        savedState.cameraPosition.z
-      );
-    } else {
-      camera.position.set(0, 10, 20);
-    }
-    
-    // Restore camera rotation if saved
-    if (savedState.cameraRotation) {
-      camera.rotation.set(
-        savedState.cameraRotation.x,
-        savedState.cameraRotation.y,
-        savedState.cameraRotation.z
-      );
-    } else {
-      camera.rotation.set(-0.3, 0, 0);
-    }
-    
-    // Restore tool and block type
-    if (savedState.selectedTool) {
-      currentBuilderTool = savedState.selectedTool;
-    }
-    
-    if (savedState.selectedBlockType) {
-      selectedBlockType = savedState.selectedBlockType;
-    }
-    
-  } else {
-    // Setup a new course template if no saved state exists
-    console.log("No saved builder state found, creating new template");
-    buildingBlocks = setupCourseTemplate(scene, templateSize);
-    
-    // Add all building blocks to platforms for collision detection
-    buildingBlocks.forEach(block => {
-      if (!platforms.includes(block)) {
-        platforms.push(block);
-      }
-    });
-    
-    // Set better initial camera position for viewing the template
-    const initialCameraSetup = getInitialCameraPosition(templateSize);
+    // Set camera to view course
+    const initialCameraSetup = getInitialCameraPosition(courseTemplate);
     camera.position.copy(initialCameraSetup.position);
     camera.rotation.copy(initialCameraSetup.rotation);
+  } else {
+    // Check for saved state in localStorage
+    const savedState = loadBuilderState();
+    
+    if (savedState && savedState.blocks && savedState.blocks.length > 0) {
+      console.log("STORAGE DEBUG - Loading previous builder state with", savedState.blocks.length, "blocks");
+      
+      // Recreate blocks from saved state (buildingBlocks already cleared above)
+      savedState.blocks.forEach((blockData: BlockData, index: number) => {
+        console.log(`STORAGE DEBUG - Loading block ${index} of type: ${blockData.type} at position:`, blockData.position);
+        let geometry, material;
+        
+        switch(blockData.type) {
+          case "start":
+            geometry = new THREE.BoxGeometry(
+              BLOCK_TYPES.START.size.width, 
+              BLOCK_TYPES.START.size.height, 
+              BLOCK_TYPES.START.size.depth
+            );
+            material = new THREE.MeshStandardMaterial({ 
+              color: BLOCK_TYPES.START.color,
+              roughness: 0.7
+            });
+            break;
+          case "finish":
+            geometry = new THREE.BoxGeometry(
+              BLOCK_TYPES.FINISH.size.width, 
+              BLOCK_TYPES.FINISH.size.height, 
+              BLOCK_TYPES.FINISH.size.depth
+            );
+            material = new THREE.MeshStandardMaterial({ 
+              color: BLOCK_TYPES.FINISH.color,
+              roughness: 0.7
+            });
+            break;
+          case "floor":
+            geometry = new THREE.BoxGeometry(
+              BLOCK_TYPES.FLOOR_PLATFORM.size.width, 
+              BLOCK_TYPES.FLOOR_PLATFORM.size.height, 
+              BLOCK_TYPES.FLOOR_PLATFORM.size.depth
+            );
+            material = new THREE.MeshStandardMaterial({ 
+              color: BLOCK_TYPES.FLOOR_PLATFORM.color,
+              roughness: 0.7
+            });
+            break;
+          case "platform":
+          default:
+            geometry = new THREE.BoxGeometry(
+              BLOCK_TYPES.PLATFORM.size.width, 
+              BLOCK_TYPES.PLATFORM.size.height, 
+              BLOCK_TYPES.PLATFORM.size.depth
+            );
+            material = new THREE.MeshStandardMaterial({ 
+              color: BLOCK_TYPES.PLATFORM.color,
+              roughness: 0.7
+            });
+        }
+        
+        const block = new THREE.Mesh(geometry, material);
+        block.position.set(blockData.position.x, blockData.position.y, blockData.position.z);
+        block.userData = { type: blockData.type };
+        block.castShadow = true;
+        block.receiveShadow = true;
+        
+        scene.add(block);
+        buildingBlocks.push(block);
+        
+        // Add to platforms for collision detection
+        if (!platforms.includes(block)) {
+          platforms.push(block);
+        }
+      });
+      
+      // Restore camera position if saved
+      if (savedState.cameraPosition) {
+        camera.position.set(
+          savedState.cameraPosition.x,
+          savedState.cameraPosition.y,
+          savedState.cameraPosition.z
+        );
+      } else {
+        camera.position.set(0, 10, 20);
+      }
+      
+      // Restore camera rotation if saved
+      if (savedState.cameraRotation) {
+        camera.rotation.set(
+          savedState.cameraRotation.x,
+          savedState.cameraRotation.y,
+          savedState.cameraRotation.z
+        );
+      } else {
+        camera.rotation.set(-0.3, 0, 0);
+      }
+      
+      // Restore tool and block type
+      if (savedState.selectedTool) {
+        currentBuilderTool = savedState.selectedTool;
+      }
+      
+      if (savedState.selectedBlockType) {
+        selectedBlockType = savedState.selectedBlockType;
+      }
+      
+    } else {
+      // Setup a new course template if no saved state exists
+      console.log("No saved builder state found, creating new template");
+      buildingBlocks = setupCourseTemplate(scene, templateSize);
+      
+      // Add all building blocks to platforms for collision detection
+      buildingBlocks.forEach(block => {
+        if (!platforms.includes(block)) {
+          platforms.push(block);
+        }
+      });
+      
+      // Set better initial camera position for viewing the template
+      const initialCameraSetup = getInitialCameraPosition(templateSize);
+      camera.position.copy(initialCameraSetup.position);
+      camera.rotation.copy(initialCameraSetup.rotation);
+    }
   }
   
   // Always ensure camera rotation order is set correctly
@@ -689,7 +769,28 @@ function enterBuilderMode(templateSize: string = "medium") {
       selectedBlockType,
       buildingBlocks,
       exitBuilderMode,
-      () => saveCourse(buildingBlocks, courseTemplate),
+      // Update save button to show course name prompt
+      () => {
+        showModal("Save Course", `
+          <div style="display: flex; flex-direction: column; gap: 15px; padding: 10px;">
+            <label for="course-name" style="margin-bottom: 5px; display: block;">Course Name:</label>
+            <input type="text" id="course-name" style="padding: 8px; font-size: 16px; border: 1px solid #444; background: #333; color: white;" 
+                   placeholder="My Awesome Course" value="${courseData ? courseData.name : ''}"/>
+          </div>
+        `, 
+        () => {
+          const courseNameInput = document.getElementById("course-name") as HTMLInputElement;
+          const courseName = courseNameInput?.value?.trim() || "";
+          
+          if (courseName) {
+            saveCurrentCourse(courseName, buildingBlocks, courseTemplate);
+          } else {
+            showNotification("Please enter a course name", 3000);
+            return false; // Prevent modal from closing
+          }
+          return true; // Allow modal to close
+        });
+      },
       (blockType: string) => {
         selectedBlockType = blockType;
         if (placementPreview) {

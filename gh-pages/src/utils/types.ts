@@ -98,4 +98,12 @@ export interface BuilderState {
   selectedTool: string;
   selectedBlockType: string;
   blocks?: BlockData[]; // Optional array of blocks for saved builder state
+}
+
+/**
+ * Saved course interface that extends CourseData with ID and name
+ */
+export interface SavedCourse extends CourseData {
+  id: string;
+  name: string;
 } 

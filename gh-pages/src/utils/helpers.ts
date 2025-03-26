@@ -1,7 +1,7 @@
 // Helper utility functions
 import * as THREE from "three";
 import { STORAGE_KEYS } from "./config.js";
-import { BuilderState } from "./types.js";
+import { BuilderState, SavedCourse } from "./types.js";
 
 /**
  * Checks if the current environment is mobile
@@ -196,4 +196,64 @@ export function resetBuilderLocalStorage(): void {
   } catch (error) {
     console.error("Error resetting builder localStorage:", error);
   }
+}
+
+/**
+ * Clears the current builder state from localStorage
+ */
+export function clearBuilderState(): void {
+  localStorage.removeItem(STORAGE_KEYS.BUILDER_STATE);
+}
+
+/**
+ * Save courses to localStorage
+ */
+export function saveSavedCourses(courses: SavedCourse[]): void {
+  localStorage.setItem(STORAGE_KEYS.SAVED_COURSES, JSON.stringify(courses));
+}
+
+/**
+ * Load courses from localStorage
+ */
+export function loadSavedCourses(): SavedCourse[] {
+  const coursesStr = localStorage.getItem(STORAGE_KEYS.SAVED_COURSES);
+  if (!coursesStr) return [];
+  try {
+    return JSON.parse(coursesStr) as SavedCourse[];
+  } catch (error) {
+    console.error("Error loading saved courses:", error);
+    return [];
+  }
+}
+
+/**
+ * Convert the current builder state to a SavedCourse
+ */
+export function convertBuilderStateToSavedCourse(
+  courseName: string,
+  buildingBlocks: THREE.Mesh[],
+  courseTemplate: string
+): SavedCourse | null {
+  const startBlock = buildingBlocks.find(block => block.userData.type === "start");
+  const finishBlock = buildingBlocks.find(block => block.userData.type === "finish");
+  
+  if (!startBlock || !finishBlock) {
+    console.error("Course must have start and finish blocks");
+    return null;
+  }
+  
+  return {
+    id: Date.now().toString(), // Unique ID using timestamp
+    name: courseName,
+    template: courseTemplate,
+    blocks: buildingBlocks.map(block => ({
+      position: { x: block.position.x, y: block.position.y, z: block.position.z },
+      type: block.userData.type,
+      size: block.geometry.type.includes("Box") ? 
+        (block.geometry as THREE.BoxGeometry).parameters : 
+        { width: 3, height: 1, depth: 3 }
+    })),
+    startPosition: { x: startBlock.position.x, y: startBlock.position.y + 1, z: startBlock.position.z },
+    finishPosition: { x: finishBlock.position.x, y: finishBlock.position.y, z: finishBlock.position.z }
+  };
 } 

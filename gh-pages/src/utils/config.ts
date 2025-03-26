@@ -92,5 +92,6 @@ export const TEMPLATE_SIZES = {
 export const STORAGE_KEYS = {
   BUILDER_STATE: 'builderState',
   BUILDER_TEMPLATE: 'builderTemplate',
-  LAST_MODE: 'lastMode'
+  LAST_MODE: 'lastMode',
+  SAVED_COURSES: 'savedCourses'
 }; 

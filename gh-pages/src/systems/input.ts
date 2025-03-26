@@ -59,6 +59,26 @@ export function setupEventListeners(
     handleParentMessage(event, gameStarted, builderMode);
   });
   
+  // Prevent context menu (right-click) globally
+  document.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    return false;
+  }, true);
+  
+  // Also prevent context menu on body and game-container for redundancy
+  document.body.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    return false;
+  }, true);
+  
+  const gameContainer = document.getElementById('game-container');
+  if (gameContainer) {
+    gameContainer.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      return false;
+    }, true);
+  }
+  
   // We can't directly save builder state here as we don't have access to all required variables
   // App.ts will handle the periodic saving of builder state
 }
@@ -77,6 +97,11 @@ export function handleKeyDown(
   toggleGameModeCallback: () => void,
   playOnlyMode: boolean = false
 ): void {
+  // Skip input handling if a modal is open
+  if (document.getElementById("modal-overlay")) {
+    return;
+  }
+  
   // Get the current builder mode from localStorage in case the builderMode parameter is not updated
   const storedMode = localStorage.getItem('lastMode');
   const isInBuilderMode = builderMode || storedMode === 'builder';
@@ -204,6 +229,11 @@ export function handleKeyUp(
   buildControls: BuildControls,
   builderMode: boolean
 ): void {
+  // Skip input handling if a modal is open
+  if (document.getElementById("modal-overlay")) {
+    return;
+  }
+  
   // Get the current builder mode from localStorage in case the builderMode parameter is not updated
   const storedMode = localStorage.getItem('lastMode');
   const isInBuilderMode = builderMode || storedMode === 'builder';
@@ -341,8 +371,26 @@ export function setupBuilderMouseHandlers(
   // Set camera's euler order to YXZ to prevent gimbal lock and maintain proper rotation
   camera.rotation.order = "YXZ";
   
+  // Function to check if modal is open
+  const isModalOpen = () => document.getElementById("modal-overlay") !== null;
+  
+  // IMPORTANT: Always prevent default browser context menu
+  // This needs to be on the container, document.body, and document to ensure it's never shown
+  const preventContextMenu = (event: MouseEvent) => {
+    event.preventDefault();
+    return false;
+  };
+  
+  // Apply to multiple elements to ensure it's always caught
+  container.addEventListener('contextmenu', preventContextMenu);
+  document.body.addEventListener('contextmenu', preventContextMenu);
+  document.addEventListener('contextmenu', preventContextMenu);
+  
   // Left click to place or remove blocks
   container.addEventListener('click', (event) => {
+    // Don't process clicks if a modal is open
+    if (isModalOpen()) return;
+    
     // Only process clicks if we're in builder mode
     const isBuilderMode = localStorage.getItem('lastMode') === 'builder';
     if (!isBuilderMode) return;
@@ -374,6 +422,9 @@ export function setupBuilderMouseHandlers(
   
   // Mouse controls for camera rotation - only track right mouse button
   container.addEventListener('mousedown', (event) => {
+    // Don't process mousedown if a modal is open
+    if (isModalOpen()) return;
+    
     // Check if click is on toolbar or UI
     const target = event.target as HTMLElement;
     const isToolbarClick = target.closest('#builder-toolbar') !== null;
@@ -398,6 +449,9 @@ export function setupBuilderMouseHandlers(
   });
   
   container.addEventListener('mousemove', (event) => {
+    // Don't process mousemove if a modal is open
+    if (isModalOpen()) return;
+    
     // Always update placement preview on mouse move
     placementPreviewFn();
     
@@ -430,6 +484,9 @@ export function setupBuilderMouseHandlers(
   });
   
   container.addEventListener('mouseup', (event) => {
+    // Don't process mouseup if a modal is open
+    if (isModalOpen()) return;
+    
     if (event.button === 2) {
       isRightMouseDown = false;
       
@@ -444,15 +501,13 @@ export function setupBuilderMouseHandlers(
   
   // Also handle mouse leave to prevent "stuck" rotation
   container.addEventListener('mouseleave', () => {
+    // Don't process mouseleave if a modal is open
+    if (isModalOpen()) return;
+    
     if (isRightMouseDown) {
       isRightMouseDown = false;
       container.style.cursor = 'default';
     }
-  });
-  
-  // Prevent context menu on right click
-  container.addEventListener('contextmenu', (event) => {
-    event.preventDefault();
   });
 }
 
