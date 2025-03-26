@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parkour Hobo - Course Builder</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.150.1/three.min.js"></script>
+</head>
+<body>
+    <header>
+        <h1>Parkour Hobo Course Builder</h1>
+        <div class="mode-toggle">
+            <button id="builder-mode-btn" class="active">Builder Mode</button>
+            <button id="preview-mode-btn">Preview Mode</button>
+        </div>
+    </header>
+
+    <main>
+        <div id="game-container">
+            <!-- Three.js will render here -->
+        </div>
+        
+        <div id="builder-controls">
+            <div id="block-controls">
+                <h2>Block Type</h2>
+                <div class="control-buttons">
+                    <button id="platform-btn" class="active">Platform</button>
+                    <button id="start-btn">Start</button>
+                    <button id="finish-btn">Finish</button>
+                </div>
+            </div>
+            
+            <div id="tool-controls">
+                <h2>Builder Tools</h2>
+                <div class="control-buttons">
+                    <button id="build-tool-btn" class="active">Build</button>
+                    <button id="remove-tool-btn">Remove</button>
+                    <button id="camera-tool-btn">Camera</button>
+                </div>
+            </div>
+            
+            <div id="template-controls">
+                <h2>Course Size</h2>
+                <div class="control-buttons">
+                    <button id="template-small-btn">Small</button>
+                    <button id="template-medium-btn" class="active">Medium</button>
+                    <button id="template-large-btn">Large</button>
+                </div>
+            </div>
+            
+            <div id="action-controls">
+                <h2>Actions</h2>
+                <div class="control-buttons">
+                    <button id="new-btn">New Course</button>
+                    <button id="save-btn">Save to Storage</button>
+                    <button id="export-btn">Export Code</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="export-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2>Export Course</h2>
+                <p>Copy this code to share your course:</p>
+                <textarea id="export-code" readonly></textarea>
+                <div class="modal-actions">
+                    <button id="copy-btn">Copy to Clipboard</button>
+                    <button id="close-modal-btn">Close</button>
+                </div>
+                <div id="validation-message"></div>
+            </div>
+        </div>
+    </main>
+    
+    <footer>
+        <p>Parkour Hobo Builder - Use this to create courses for the Reddit game!</p>
+    </footer>
+
+    <script src="js/config.js"></script>
+    <script src="js/builder.js"></script>
+    <script src="js/controls.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html> 
