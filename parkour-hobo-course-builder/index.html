@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parkour Hobo Course Builder</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./src/styles.css">
+</head>
+<body>
+  <div id="pixelated-menu" class="active">
+    <h1>PARKOUR HOBO COURSE BUILDER</h1>
+    <div class="menu-container">
+      <div id="main-menu">
+        <button id="new-course-btn" class="menu-btn">New Course</button>
+        <button id="load-course-btn" class="menu-btn">Load Course</button>
+      </div>
+      
+      <div id="new-course-menu" class="hidden">
+        <h2>Select Template</h2>
+        <button class="template-btn" data-template="small">Small (200 blocks)</button>
+        <button class="template-btn" data-template="medium">Medium (400 blocks)</button>
+        <button class="template-btn" data-template="large">Large (600 blocks)</button>
+        <button class="back-btn">Back</button>
+      </div>
+      
+      <div id="load-course-menu" class="hidden">
+        <h2>Saved Courses</h2>
+        <div id="saved-courses-list">
+          <!-- Courses will be loaded here dynamically -->
+        </div>
+        <button class="back-btn">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <header id="header" class="hidden">
+    <div class="header-title">Parkour Hobo Course Builder</div>
+    <div class="header-controls">
+      <input type="text" id="course-name" placeholder="Course Name" maxlength="20">
+      <button id="save-course-btn">Save Course</button>
+      <button id="export-code-btn">Export Code</button>
+      <button id="reset-btn">Reset</button>
+    </div>
+    <div id="block-counter">Blocks Used: 0 / 0</div>
+  </header>
+
+  <div id="side-menu" class="hidden">
+    <button class="block-btn" data-block="floor">Floor</button>
+    <button class="block-btn" data-block="smallPlatform">Small Platform</button>
+    <button class="block-btn" data-block="largePlatform">Large Platform</button>
+    <button class="block-btn" data-block="garbageBag">Garbage Bag</button>
+    <button class="block-btn" data-block="rooftop">Rooftop</button>
+    <button class="block-btn" data-block="building">City Building</button>
+    <button class="block-btn" data-block="start">Start</button>
+    <button class="block-btn" data-block="finish">Finish</button>
+  </div>
+
+  <div id="export-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2>Export Code</h2>
+      <textarea id="export-code" readonly></textarea>
+      <button id="close-export-modal">Close</button>
+    </div>
+  </div>
+
+  <canvas id="threejs-canvas"></canvas>
+  
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>
