@@ -33,6 +33,10 @@ class ParkourHoboCourseBuilder {
   private placeholderMesh: THREE.Mesh | null = null;
   private canPlaceBlock: boolean = true;
 
+  // Add these properties to the ParkourHoboCourseBuilder class
+  private currentTool: string = 'build';
+  private rotationAngle: number = 0;
+
   constructor() {
     // Initialize components
     this.blockFactory = new BlockFactory();
@@ -140,6 +144,28 @@ class ParkourHoboCourseBuilder {
       this.clearScene();
       this.ui.showStartMenu();
     });
+    
+    this.ui.setOnToolSelected((tool: string) => {
+      this.currentTool = tool;
+      
+      // Handle player mode tool
+      if (tool === 'player') {
+        if (this.isBuilderMode) {
+          this.toggleMode();
+        }
+        return;
+      }
+      
+      // If we're in player mode, switch back to builder mode
+      if (!this.isBuilderMode) {
+        this.toggleMode();
+      }
+      
+      // When selecting build tool, also handle block selection UI
+      if (tool === 'build') {
+        // No need to do anything special, the block selection is already handled
+      }
+    });
   }
 
   private setupEventListeners() {
@@ -152,8 +178,11 @@ class ParkourHoboCourseBuilder {
     
     // Mouse events for placing blocks
     this.renderer.domElement.addEventListener('mousemove', (event) => {
-      this.pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
-      this.pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      // Calculate pointer position in normalized device coordinates
+      // (-1 to +1) for both components
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       
       // Update placeholder position
       if (this.isBuilderMode && this.selectedBlockType) {
@@ -169,9 +198,27 @@ class ParkourHoboCourseBuilder {
     
     // Keyboard events
     window.addEventListener('keydown', (event) => {
-      // Toggle between builder and player mode with 'B' key
-      if (event.key === 'b' || event.key === 'B') {
+      // Tool shortcuts
+      if (event.key === '1') {
+        this.ui.selectTool('build');
+        // Set the tool internally as well
+        this.currentTool = 'build';
+      } else if (event.key === '2') {
+        this.ui.selectTool('delete');
+        this.currentTool = 'delete';
+      } else if (event.key === '3') {
+        this.ui.selectTool('rotate');
+        this.currentTool = 'rotate';
+      } else if (event.key === 'b' || event.key === 'B') {
+        // B toggles between builder and player modes
         this.toggleMode();
+        
+        // Update toolbar to reflect the current mode
+        if (this.isBuilderMode) {
+          this.ui.selectTool(this.currentTool); // Go back to previous build tool
+        } else {
+          this.ui.selectTool('player');
+        }
       }
       
       // Player controls
@@ -251,8 +298,22 @@ class ParkourHoboCourseBuilder {
   private placeBlock() {
     if (!this.selectedBlockType || !this.currentCourse || !this.canPlaceBlock) return;
     
-    // Get the placeholder position
-    if (!this.placeholderMesh) return;
+    // Handle different tools
+    switch (this.currentTool) {
+      case 'build':
+        this.buildBlock();
+        break;
+      case 'delete':
+        this.deleteBlock();
+        break;
+      case 'rotate':
+        this.rotateBlock();
+        break;
+    }
+  }
+
+  private buildBlock() {
+    if (!this.placeholderMesh || !this.selectedBlockType || !this.currentCourse) return;
     
     const position = this.placeholderMesh.position.clone();
     
@@ -263,8 +324,11 @@ class ParkourHoboCourseBuilder {
     const block = this.blockFactory.createBlock(
       this.selectedBlockType, 
       { x: position.x, y: position.y, z: position.z }, 
-      { x: 0, y: 0, z: 0 }
+      { x: 0, y: this.rotationAngle, z: 0 }
     );
+    
+    // Apply rotation
+    block.mesh!.rotation.y = THREE.MathUtils.degToRad(this.rotationAngle);
     
     // Add to scene and course
     this.scene.add(block.mesh!);
@@ -290,6 +354,52 @@ class ParkourHoboCourseBuilder {
     
     // Update placeholder validity (limits might have changed)
     this.updatePlaceholderPosition();
+  }
+
+  private deleteBlock() {
+    if (!this.currentCourse) return;
+    
+    // Cast a ray to find which block we're pointing at
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const intersects = this.raycaster.intersectObjects(this.scene.children);
+    
+    for (const intersect of intersects) {
+      // Skip grid, placeholders, etc.
+      if (!(intersect.object instanceof THREE.Mesh) || intersect.object === this.placeholderMesh) continue;
+      
+      // Find the block that matches this mesh
+      const blockIndex = this.currentCourse.blocks.findIndex(block => 
+        block.mesh === intersect.object
+      );
+      
+      if (blockIndex >= 0) {
+        const block = this.currentCourse.blocks[blockIndex];
+        
+        // Remove from scene
+        this.scene.remove(block.mesh!);
+        
+        // Remove from blocks array
+        this.currentCourse.blocks.splice(blockIndex, 1);
+        
+        // Update block counter
+        this.updateBlockCounter();
+        
+        // Update placeholder validity
+        this.updatePlaceholderPosition();
+        
+        break;
+      }
+    }
+  }
+
+  private rotateBlock() {
+    // Rotate in 90 degree increments
+    this.rotationAngle = (this.rotationAngle + 90) % 360;
+    
+    // Update placeholder rotation
+    if (this.placeholderMesh) {
+      this.placeholderMesh.rotation.y = THREE.MathUtils.degToRad(this.rotationAngle);
+    }
   }
 
   private updateBlockCounter() {
@@ -428,6 +538,8 @@ class ParkourHoboCourseBuilder {
       
       // Calculate position (snap to grid)
       const position = new THREE.Vector3().copy(intersect.point);
+      
+      // Round to nearest grid point to ensure proper alignment
       position.x = Math.round(position.x);
       position.z = Math.round(position.z);
       
@@ -454,6 +566,9 @@ class ParkourHoboCourseBuilder {
         material.opacity = 0.7;
         material.color.set('#FF0000'); // Red for invalid placement
       }
+      
+      // Set rotation of placeholder
+      this.placeholderMesh.rotation.y = THREE.MathUtils.degToRad(this.rotationAngle);
       
       return;
     }

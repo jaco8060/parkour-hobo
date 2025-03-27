@@ -12,6 +12,7 @@ export class UI {
   private blockCounter: HTMLElement;
   private exportModal: HTMLElement;
   private exportCode: HTMLTextAreaElement;
+  private toolbar: HTMLElement;
   
   private courseManager: CourseManager;
   private onNewCourse: ((templateName: string) => void) | undefined;
@@ -20,6 +21,7 @@ export class UI {
   private onExportCourse: (() => void) | undefined;
   private onSaveCourse: (() => void) | undefined;
   private onReset: (() => void) | undefined;
+  private onToolSelected: ((tool: string) => void) | undefined;
 
   constructor(courseManager: CourseManager) {
     this.courseManager = courseManager;
@@ -36,8 +38,11 @@ export class UI {
     this.blockCounter = document.getElementById('block-counter') as HTMLElement;
     this.exportModal = document.getElementById('export-modal') as HTMLElement;
     this.exportCode = document.getElementById('export-code') as HTMLTextAreaElement;
+    this.toolbar = document.getElementById('toolbar') as HTMLElement;
     
     this.setupEventListeners();
+    this.setupExportModalEvents();
+    this.setupToolbar();
   }
 
   private setupEventListeners() {
@@ -113,6 +118,55 @@ export class UI {
     });
   }
 
+  private setupExportModalEvents() {
+    document.getElementById('copy-export-code')?.addEventListener('click', () => {
+      const codeText = this.exportCode.value;
+      navigator.clipboard.writeText(codeText)
+        .then(() => {
+          alert('Code copied to clipboard!');
+        })
+        .catch(err => {
+          console.error('Could not copy text: ', err);
+        });
+    });
+  }
+
+  private setupToolbar() {
+    const toolButtons = document.querySelectorAll('.tool-btn');
+    
+    toolButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tool = btn.getAttribute('data-tool') || 'build';
+        this.selectTool(tool);
+      });
+    });
+    
+    // Select build tool by default
+    this.selectTool('build');
+  }
+
+  public selectTool(tool: string) {
+    // Remove active class from all tools
+    document.querySelectorAll('.tool-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    
+    // Add active class to selected tool
+    const toolBtn = document.querySelector(`.tool-btn[data-tool="${tool}"]`);
+    if (toolBtn) {
+      toolBtn.classList.add('active');
+    }
+    
+    if (this.onToolSelected) {
+      this.onToolSelected(tool);
+    }
+    
+    // Special handling for player mode
+    if (tool === 'player') {
+      // This will be handled by the main class
+    }
+  }
+
   setOnNewCourse(callback: (templateName: string) => void) {
     this.onNewCourse = callback;
   }
@@ -140,6 +194,10 @@ export class UI {
     this.onReset = callback;
   }
 
+  setOnToolSelected(callback: (tool: string) => void) {
+    this.onToolSelected = callback;
+  }
+
   showStartMenu() {
     this.pixelatedMenu.classList.remove('hidden');
     this.header.classList.add('hidden');
@@ -155,6 +213,7 @@ export class UI {
     this.hideStartMenu();
     this.header.classList.remove('hidden');
     this.sideMenu.classList.remove('hidden');
+    this.toolbar.classList.remove('hidden');
     document.body.classList.add('builder-mode');
   }
 
