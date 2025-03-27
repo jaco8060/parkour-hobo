@@ -33,10 +33,8 @@ import {
 import { 
   setupLighting, 
   createGround, 
-  createCityEnvironment, 
   setupCourseTemplate, 
   clearEnvironment,
-  createBuilderGrid,
   getInitialCameraPosition
 } from "./systems/environment.js";
 import { 
@@ -284,9 +282,6 @@ function initGameplay() {
   // Set game started flag
   gameStarted = true;
   builderMode = false;
-  
-  // Create ground
-  createGround(scene);
   
   // Show initial overlay with instructions
   showOverlay(() => resetAllControls(keyState, buildControls), builderMode);
@@ -557,9 +552,6 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
     case "small": templateSizeValue = TEMPLATE_SIZES.SMALL; break;
     case "large": templateSizeValue = TEMPLATE_SIZES.LARGE; break;
   }
-  
-  // Create builder grid for accurate placement
-  createBuilderGrid(scene, templateSizeValue);
   
   // Loading approach depends on whether we have a saved course or need to use local storage
   if (courseData) {
