@@ -63,7 +63,8 @@ import {
 import { 
   setupEventListeners, 
   setupBuilderMouseHandlers, 
-  resetAllControls 
+  resetAllControls,
+  cleanupBuilderMouseHandlers
 } from "./systems/input.js";
 import { 
   showOverlay, 
@@ -479,13 +480,26 @@ function handleResize() {
  * Toggle between player and builder modes
  */
 function toggleGameMode() {
-  const previousMode = builderMode ? 'builder' : 'player';
-  console.log(`Toggling game mode. Previous mode: ${previousMode}`);
-  
   if (builderMode) {
+    // Switching from builder to player mode
+    builderMode = false;
+    localStorage.setItem('lastMode', 'player');
+    
+    // Clean up builder mouse handlers
+    import('./systems/input.js').then(inputModule => {
+      const container = document.getElementById('game-container');
+      if (container) {
+        inputModule.cleanupBuilderMouseHandlers(container);
+      }
+    });
+    
     console.log("Exiting builder mode...");
     exitBuilderMode();
   } else {
+    // Switching from player to builder mode
+    builderMode = true;
+    localStorage.setItem('lastMode', 'builder');
+    
     console.log("Entering builder mode...");
     const lastTemplate = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
     enterBuilderMode(lastTemplate);
@@ -497,18 +511,13 @@ function toggleGameMode() {
   // console.log(`localStorage mode: ${localStorage.getItem(STORAGE_KEYS.LAST_MODE)}`);
   
   // Check if toggle was effective
-  if (previousMode === newMode) {
+  if (newMode === 'player') {
     console.error("Mode did not toggle correctly! Forcing update...");
     
     // Force mode change
-    if (newMode === 'player') {
-      builderMode = true;
-      exitBuilderMode();
-    } else {
-      builderMode = false;
-      enterBuilderMode();
-    }
-    
+    builderMode = true;
+    exitBuilderMode();
+  } else {
     console.log(`Forced mode change, now: ${builderMode ? 'builder' : 'player'}`);
   }
 }

@@ -349,6 +349,51 @@ export function handleParentMessage(
   }
 }
 
+// Store references to event listeners so we can remove them later
+let builderMouseHandlers = {
+  click: null as ((e: MouseEvent) => void) | null,
+  mousedown: null as ((e: MouseEvent) => void) | null,
+  mousemove: null as ((e: MouseEvent) => void) | null,
+  mouseup: null as ((e: MouseEvent) => void) | null,
+  mouseleave: null as ((e: MouseEvent) => void) | null
+};
+
+/**
+ * Cleans up builder mouse handlers when switching to player mode
+ */
+export function cleanupBuilderMouseHandlers(container: HTMLElement): void {
+  console.log("Cleaning up builder mouse handlers");
+  
+  // Remove each event listener if it exists
+  if (builderMouseHandlers.click) {
+    container.removeEventListener('click', builderMouseHandlers.click);
+    builderMouseHandlers.click = null;
+  }
+  
+  if (builderMouseHandlers.mousedown) {
+    container.removeEventListener('mousedown', builderMouseHandlers.mousedown);
+    builderMouseHandlers.mousedown = null;
+  }
+  
+  if (builderMouseHandlers.mousemove) {
+    container.removeEventListener('mousemove', builderMouseHandlers.mousemove);
+    builderMouseHandlers.mousemove = null;
+  }
+  
+  if (builderMouseHandlers.mouseup) {
+    container.removeEventListener('mouseup', builderMouseHandlers.mouseup);
+    builderMouseHandlers.mouseup = null;
+  }
+  
+  if (builderMouseHandlers.mouseleave) {
+    container.removeEventListener('mouseleave', builderMouseHandlers.mouseleave);
+    builderMouseHandlers.mouseleave = null;
+  }
+  
+  // Reset cursor just in case
+  container.style.cursor = 'default';
+}
+
 /**
  * Sets up mouse handlers for builder mode
  */
@@ -359,36 +404,38 @@ export function setupBuilderMouseHandlers(
   placeBlockFn: () => void,
   removeBlockFn: () => void
 ): void {
+  // First clean up any existing handlers to prevent duplicates
+  cleanupBuilderMouseHandlers(container);
+  
   let isRightMouseDown = false;
   let lastMouseX = 0;
   let lastMouseY = 0;
-  let dragDistance = 0; // Track drag distance to distinguish clicks from drags
-  let isRecentToolClick = false; // Flag to track recent toolbar clicks
+  let dragDistance = 0;
+  let isRecentToolClick = false;
   
-  // Set camera's euler order to YXZ to prevent gimbal lock and maintain proper rotation
+  // Set camera's euler order to YXZ to prevent gimbal lock
   camera.rotation.order = "YXZ";
   
   // Function to check if modal is open
   const isModalOpen = () => document.getElementById("modal-overlay") !== null;
   
-  // IMPORTANT: Always prevent default browser context menu
-  // This needs to be on the container, document.body, and document to ensure it's never shown
+  // Context menu prevention
   const preventContextMenu = (event: MouseEvent) => {
     event.preventDefault();
     return false;
   };
   
-  // Apply to multiple elements to ensure it's always caught
   container.addEventListener('contextmenu', preventContextMenu);
   document.body.addEventListener('contextmenu', preventContextMenu);
   document.addEventListener('contextmenu', preventContextMenu);
   
-  // Left click to place or remove blocks
-  container.addEventListener('click', (event) => {
-    // Don't process clicks if a modal is open
+  // Create handlers and store references BEFORE attaching them
+  
+  // Click handler
+  const clickHandler = (event: MouseEvent) => {
     if (isModalOpen()) return;
     
-    // Only process clicks if we're in builder mode
+    // SAFETY CHECK: Only process in builder mode
     const isBuilderMode = localStorage.getItem('lastMode') === 'builder';
     if (!isBuilderMode) return;
     
@@ -415,12 +462,15 @@ export function setupBuilderMouseHandlers(
       placeBlockFn();
       removeBlockFn();
     }
-  });
+  };
   
-  // Mouse controls for camera rotation - only track right mouse button
-  container.addEventListener('mousedown', (event) => {
-    // Don't process mousedown if a modal is open
+  // Mousedown handler
+  const mousedownHandler = (event: MouseEvent) => {
     if (isModalOpen()) return;
+    
+    // SAFETY CHECK: Only process in builder mode
+    const isBuilderMode = localStorage.getItem('lastMode') === 'builder';
+    if (!isBuilderMode) return;
     
     // Check if click is on toolbar or UI
     const target = event.target as HTMLElement;
@@ -443,11 +493,15 @@ export function setupBuilderMouseHandlers(
       
       event.preventDefault();
     }
-  });
+  };
   
-  container.addEventListener('mousemove', (event) => {
-    // Don't process mousemove if a modal is open
+  // Mousemove handler
+  const mousemoveHandler = (event: MouseEvent) => {
     if (isModalOpen()) return;
+    
+    // SAFETY CHECK: Only process in builder mode
+    const isBuilderMode = localStorage.getItem('lastMode') === 'builder';
+    if (!isBuilderMode) return;
     
     // Always update placement preview on mouse move
     placementPreviewFn();
@@ -461,9 +515,8 @@ export function setupBuilderMouseHandlers(
     // Update drag distance
     dragDistance += Math.sqrt(deltaX * deltaX + deltaY * deltaY);
     
-    // Adjust sensitivity based on camera height
-    const heightFactor = Math.max(0.5, Math.min(2.0, camera.position.y / 10));
-    const sensitivity = 0.005 * heightFactor;
+    // Replace the sensitivity calculation with a constant value
+    const sensitivity = 0.005; // Remove the height factor dependency
     
     // Rotate horizontally (yaw)
     camera.rotation.y -= deltaX * sensitivity;
@@ -478,11 +531,15 @@ export function setupBuilderMouseHandlers(
     lastMouseX = event.clientX;
     lastMouseY = event.clientY;
     event.preventDefault();
-  });
+  };
   
-  container.addEventListener('mouseup', (event) => {
-    // Don't process mouseup if a modal is open
+  // Mouseup handler
+  const mouseupHandler = (event: MouseEvent) => {
     if (isModalOpen()) return;
+    
+    // SAFETY CHECK: Only process in builder mode
+    const isBuilderMode = localStorage.getItem('lastMode') === 'builder';
+    if (!isBuilderMode) return;
     
     if (event.button === 2) {
       isRightMouseDown = false;
@@ -494,18 +551,35 @@ export function setupBuilderMouseHandlers(
       
       event.preventDefault();
     }
-  });
+  };
   
-  // Also handle mouse leave to prevent "stuck" rotation
-  container.addEventListener('mouseleave', () => {
-    // Don't process mouseleave if a modal is open
+  // Mouseleave handler
+  const mouseleaveHandler = () => {
     if (isModalOpen()) return;
+    
+    // SAFETY CHECK: Only process in builder mode
+    const isBuilderMode = localStorage.getItem('lastMode') === 'builder';
+    if (!isBuilderMode) return;
     
     if (isRightMouseDown) {
       isRightMouseDown = false;
       container.style.cursor = 'default';
     }
-  });
+  };
+  
+  // Store references
+  builderMouseHandlers.click = clickHandler;
+  builderMouseHandlers.mousedown = mousedownHandler;
+  builderMouseHandlers.mousemove = mousemoveHandler;
+  builderMouseHandlers.mouseup = mouseupHandler;
+  builderMouseHandlers.mouseleave = mouseleaveHandler;
+  
+  // Attach handlers AFTER storing references
+  container.addEventListener('click', clickHandler);
+  container.addEventListener('mousedown', mousedownHandler);
+  container.addEventListener('mousemove', mousemoveHandler);
+  container.addEventListener('mouseup', mouseupHandler);
+  container.addEventListener('mouseleave', mouseleaveHandler);
 }
 
 /**
