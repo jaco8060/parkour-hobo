@@ -402,12 +402,14 @@ export function setupBuilderMouseHandlers(
   camera: THREE.Camera,
   placementPreviewFn: () => void,
   placeBlockFn: () => void,
-  removeBlockFn: () => void
+  removeBlockFn: () => void,
+  rotateBlockFn?: (deltaX: number, deltaY: number) => void
 ): void {
   // First clean up any existing handlers to prevent duplicates
   cleanupBuilderMouseHandlers(container);
   
   let isRightMouseDown = false;
+  let isLeftMouseDown = false;
   let lastMouseX = 0;
   let lastMouseY = 0;
   let dragDistance = 0;
@@ -457,10 +459,16 @@ export function setupBuilderMouseHandlers(
       return;
     }
     
+    // Handle different inputs based on current builder tool
+    const currentBuilderTool = localStorage.getItem('currentBuilderTool') || 'build';
+    
     // Prevent block placement if it's a recent tool click or during right-click drag
     if (event.button === 0 && !isRightMouseDown && !isRecentToolClick) {
-      placeBlockFn();
-      removeBlockFn();
+      // Only place/remove blocks if not in rotate mode
+      if (currentBuilderTool !== 'rotate') {
+        placeBlockFn();
+        removeBlockFn();
+      }
     }
   };
   
@@ -482,7 +490,8 @@ export function setupBuilderMouseHandlers(
       return;
     }
     
-    if (event.button === 2) { // Right click
+    // Right-click is always for camera rotation in any tool mode
+    if (event.button === 2) {
       isRightMouseDown = true;
       lastMouseX = event.clientX;
       lastMouseY = event.clientY;
@@ -490,6 +499,22 @@ export function setupBuilderMouseHandlers(
       
       // Change cursor to indicate camera control
       container.style.cursor = 'grabbing';
+      
+      event.preventDefault();
+    } 
+    // Left-click handling depends on the current tool
+    else if (event.button === 0) {
+      // Get current tool - with fallback to ensure it works immediately
+      const currentBuilderTool = localStorage.getItem('currentBuilderTool') || 'build';
+      
+      isLeftMouseDown = true;
+      lastMouseX = event.clientX;
+      lastMouseY = event.clientY;
+      
+      // Change cursor for rotate mode
+      if (currentBuilderTool === 'rotate') {
+        container.style.cursor = 'move';
+      }
       
       event.preventDefault();
     }
@@ -506,27 +531,36 @@ export function setupBuilderMouseHandlers(
     // Always update placement preview on mouse move
     placementPreviewFn();
     
-    // Only handle camera rotation if right mouse button is down
-    if (!isRightMouseDown) return;
-    
     const deltaX = event.clientX - lastMouseX;
     const deltaY = event.clientY - lastMouseY;
     
-    // Update drag distance
-    dragDistance += Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    // Get the current builder tool - default to 'build' if not set
+    // This ensures we have a valid value even if localStorage is not set yet
+    const currentBuilderTool = localStorage.getItem('currentBuilderTool') || 'build';
     
-    // Replace the sensitivity calculation with a constant value
-    const sensitivity = 0.005; // Remove the height factor dependency
-    
-    // Rotate horizontally (yaw)
-    camera.rotation.y -= deltaX * sensitivity;
-    
-    // Rotate vertically (pitch) with limits
-    const newPitch = camera.rotation.x - deltaY * sensitivity;
-    camera.rotation.x = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, newPitch)); // Limit to ~90 degrees up/down
-    
-    // Keep camera level (no roll)
-    camera.rotation.z = 0;
+    // Handle right mouse button for camera control (in any tool mode)
+    if (isRightMouseDown) {
+      // Update drag distance
+      dragDistance += Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      
+      // Default behavior: camera rotation - ALWAYS works with right mouse
+      const sensitivity = 0.005;
+      
+      // Rotate horizontally (yaw)
+      camera.rotation.y -= deltaX * sensitivity;
+      
+      // Rotate vertically (pitch) with limits
+      const newPitch = camera.rotation.x - deltaY * sensitivity;
+      camera.rotation.x = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, newPitch));
+      
+      // Keep camera level (no roll)
+      camera.rotation.z = 0;
+    }
+    // Handle left mouse button for rotation (only in rotate mode)
+    else if (isLeftMouseDown && currentBuilderTool === 'rotate' && rotateBlockFn) {
+      // Call the rotate function
+      rotateBlockFn(deltaX, deltaY);
+    }
     
     lastMouseX = event.clientX;
     lastMouseY = event.clientY;
@@ -550,6 +584,18 @@ export function setupBuilderMouseHandlers(
       }
       
       event.preventDefault();
+    } else if (event.button === 0) {
+      isLeftMouseDown = false;
+      
+      // Get current tool
+      const currentBuilderTool = localStorage.getItem('currentBuilderTool') || 'build';
+      
+      // Reset cursor for rotate mode
+      if (currentBuilderTool === 'rotate') {
+        container.style.cursor = 'default';
+      }
+      
+      event.preventDefault();
     }
   };
   
@@ -563,6 +609,11 @@ export function setupBuilderMouseHandlers(
     
     if (isRightMouseDown) {
       isRightMouseDown = false;
+      container.style.cursor = 'default';
+    }
+    
+    if (isLeftMouseDown) {
+      isLeftMouseDown = false;
       container.style.cursor = 'default';
     }
   };

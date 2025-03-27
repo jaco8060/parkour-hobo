@@ -69,6 +69,11 @@ export function saveBuilderState(
           y: block.position.y,
           z: block.position.z
         },
+        rotation: {
+          x: block.rotation.x,
+          y: block.rotation.y,
+          z: block.rotation.z
+        },
         type: block.userData?.type || 'platform',
         size: block.geometry.type.includes("Box") ? 
           (block.geometry as THREE.BoxGeometry).parameters : 
@@ -241,6 +246,7 @@ export function convertBuilderStateToSavedCourse(
     template: courseTemplate,
     blocks: buildingBlocks.map(block => ({
       position: { x: block.position.x, y: block.position.y, z: block.position.z },
+      rotation: { x: block.rotation.x, y: block.rotation.y, z: block.rotation.z },
       type: block.userData.type,
       size: block.geometry.type.includes("Box") ? 
         (block.geometry as THREE.BoxGeometry).parameters : 

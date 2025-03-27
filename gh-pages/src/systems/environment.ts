@@ -162,6 +162,26 @@ export function setupCourseTemplate(scene: THREE.Scene, templateSize: string = "
   startBlock.castShadow = true;
   startBlock.userData = { type: 'start' };
   
+  // Add direction arrow to start block
+  const arrowGeometry = new THREE.ConeGeometry(0.5, 1, 8);
+  const arrowMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0xff0000,
+    emissive: 0xff0000,
+    emissiveIntensity: 0.3
+  });
+  const arrow = new THREE.Mesh(arrowGeometry, arrowMaterial);
+  
+  // Position the arrow on top of the block pointing in the positive Z direction
+  const blockHeight = (startBlock.geometry as THREE.BoxGeometry).parameters.height;
+  arrow.position.set(0, blockHeight/2 + 0.5, 0);
+  arrow.rotation.x = -Math.PI / 2; // Point along Z-axis
+  
+  // Add metadata to identify it
+  arrow.userData = { type: 'directionArrow' };
+  
+  // Add to block
+  startBlock.add(arrow);
+  
   scene.add(startBlock);
   blocks.push(startBlock);
   

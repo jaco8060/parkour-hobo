@@ -54,6 +54,11 @@ export interface BlockData {
     y: number;
     z: number;
   };
+  rotation?: {
+    x: number;
+    y: number;
+    z: number;
+  };
   type: string;
   size: any;
 }

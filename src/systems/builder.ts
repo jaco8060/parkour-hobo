@@ -914,31 +914,7 @@ export function createBuilderUI(
     },
     "Reset Storage"
   );
-  
-  resetButton.addEventListener("click", () => {
-    if (confirm("This will reset all saved builder data. Continue?")) {
-      try {
-        // Import not available here, so access through window
-        if (typeof (window as any).resetBuilderLocalStorage === 'function') {
-          (window as any).resetBuilderLocalStorage();
-        } else {
-          localStorage.removeItem('builderState');
-          localStorage.removeItem('builderTemplate');
-          localStorage.removeItem('lastMode');
-          localStorage.removeItem('gridSnap');
-          localStorage.removeItem('gridSize');
-        }
-        alert("Storage reset successful. Refresh the page to see changes.");
-      } catch (error) {
-        console.error("Failed to reset localStorage:", error);
-        alert("Failed to reset storage. Error: " + error);
-      }
-    }
-  });
-  buttonGroup.appendChild(resetButton);
-  
-  builderUI.appendChild(buttonGroup);
-  
+
   // Instructions
   const instructions = createElement("div", 
     { class: "control-instructions" },

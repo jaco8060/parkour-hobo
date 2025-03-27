@@ -407,6 +407,29 @@ export function placeBlock(
   block.castShadow = true;
   block.receiveShadow = true;
   
+  // Add direction arrow to start block
+  if (selectedBlockType === "start") {
+    // Create arrow geometry
+    const arrowGeometry = new THREE.ConeGeometry(0.5, 1, 8);
+    const arrowMaterial = new THREE.MeshStandardMaterial({ 
+      color: 0xff0000,
+      emissive: 0xff0000,
+      emissiveIntensity: 0.3
+    });
+    const arrow = new THREE.Mesh(arrowGeometry, arrowMaterial);
+    
+    // Position the arrow on top of the block pointing in the positive Z direction
+    const blockHeight = (block.geometry as THREE.BoxGeometry).parameters.height;
+    arrow.position.set(0, blockHeight/2 + 0.5, 0);
+    arrow.rotation.x = -Math.PI / 2; // Point along Z-axis
+    
+    // Add metadata to identify it
+    arrow.userData = { type: 'directionArrow' };
+    
+    // Add to block
+    block.add(arrow);
+  }
+  
   scene.add(block);
   buildingBlocks.push(block);
   
@@ -1221,6 +1244,7 @@ export function createBuilderToolbar(
   const tools = [
     { id: "build", icon: "🧱", label: "Build" },
     { id: "remove", icon: "🗑️", label: "Remove" },
+    { id: "rotate", icon: "🔄", label: "Rotate" },
     { id: "camera", icon: "🎥", label: "Camera" }
   ];
   
@@ -1277,7 +1301,7 @@ export function createBuilderToolbar(
 export function updateToolbarSelection(
   currentBuilderTool: string
 ): void {
-  const tools = ["build", "remove", "camera"];
+  const tools = ["build", "remove", "rotate", "camera"];
   
   tools.forEach(tool => {
     const button = document.getElementById(`tool-${tool}`);
@@ -1296,6 +1320,9 @@ export function updateToolbarSelection(
       case "remove":
         container.style.cursor = "not-allowed";
         break;
+      case "rotate":
+        container.style.cursor = "move";
+        break;
       case "camera":
         container.style.cursor = "move";
         break;
@@ -1303,58 +1330,6 @@ export function updateToolbarSelection(
         container.style.cursor = "default";
     }
   }
-}
-
-/**
- * Create debug UI for builder mode
- */
-export function createBuilderDebugUI(
-  buildControls: BuildControls
-): void {
-  const container = document.getElementById("game-container");
-  if (!container) return;
-  
-  const debugUI = createElement("div", 
-    { id: "builder-debug" },
-    {
-      position: "absolute",
-      top: "10px",
-      right: "10px",
-      backgroundColor: "rgba(0, 0, 0, 0.7)",
-      color: "white",
-      padding: "10px",
-      borderRadius: "5px",
-      fontFamily: "monospace",
-      zIndex: "1000",
-      maxWidth: "180px"
-    }
-  );
-  
-  container.appendChild(debugUI);
-  
-  // Update debug info every 100ms
-  const updateInterval = setInterval(() => {
-    const debugElement = document.getElementById("builder-debug");
-    if (!debugElement) {
-      clearInterval(updateInterval);
-      return;
-    }
-    
-    debugElement.innerHTML = `
-      <div style="font-weight:bold;">Builder Controls:</div>
-      <div>W (Forward): ${buildControls.forward}</div>
-      <div>S (Back): ${buildControls.backward}</div>
-      <div>A (Left): ${buildControls.left}</div>
-      <div>D (Right): ${buildControls.right}</div>
-      <div>Q (Up): ${buildControls.up}</div>
-      <div>E (Down): ${buildControls.down}</div>
-      <div>← (Rotate L): ${buildControls.rotateLeft}</div>
-      <div>→ (Rotate R): ${buildControls.rotateRight}</div>
-      <div style="color: ${buildControls.sprint ? '#ff9900' : 'white'}">
-        <strong>SHIFT (Sprint): ${buildControls.sprint}</strong>
-      </div>
-    `;
-  }, 100);
 }
 
 /**
@@ -1607,6 +1582,105 @@ function updateBlockTypeButtons(startBlocks: number, finishBlocks: number): void
       buttonEl.removeAttribute('disabled');
     }
   });
+}
+
+/**
+ * Highlights the block that is currently targeted for rotation
+ */
+export function highlightBlockForRotation(
+  camera: THREE.Camera,
+  blocks: THREE.Mesh[],
+  maxDistance: number
+): THREE.Mesh | null {
+  // Reset all previously highlighted rotation blocks
+  blocks.forEach(block => {
+    if (block.userData.rotationHighlighted) {
+      // Remove rotation indicator if it exists
+      const rotationIndicator = block.children.find(child => child.userData?.type === 'rotationIndicator');
+      if (rotationIndicator) {
+        block.remove(rotationIndicator);
+      }
+      delete block.userData.rotationHighlighted;
+    }
+  });
+  
+  // Get camera forward direction
+  const direction = new THREE.Vector3(0, 0, -1);
+  direction.applyQuaternion(camera.quaternion);
+  
+  // Cast ray from camera
+  const raycaster = new THREE.Raycaster();
+  raycaster.set(camera.position, direction);
+  
+  const intersects = raycaster.intersectObjects(blocks);
+  
+  if (intersects.length > 0 && intersects[0].distance < maxDistance) {
+    const selectedBlock = intersects[0].object as THREE.Mesh;
+    
+    // Mark the block as highlighted for rotation
+    selectedBlock.userData.rotationHighlighted = true;
+    
+    // Create a rotation indicator
+    const geometry = new THREE.RingGeometry(1, 1.2, 32);
+    const material = new THREE.MeshBasicMaterial({ 
+      color: 0x00aaff, 
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.7
+    });
+    
+    const indicator = new THREE.Mesh(geometry, material);
+    indicator.userData = { type: 'rotationIndicator' };
+    
+    // Position the indicator on top of the block
+    const blockHeight = (selectedBlock.geometry as THREE.BoxGeometry).parameters.height || 1;
+    indicator.position.set(0, blockHeight/2 + 0.1, 0);
+    indicator.rotation.x = Math.PI / 2; // Lay flat on top of block
+    
+    // Add to block
+    selectedBlock.add(indicator);
+    
+    // Create rotating animation for the indicator
+    const startTime = Date.now();
+    function animateRotation() {
+      if (!selectedBlock.parent) {
+        // Block has been removed, stop animation
+        return;
+      }
+      
+      // Rotate indicator
+      const elapsed = (Date.now() - startTime) / 1000;
+      indicator.rotation.z = elapsed * 2; // Rotate 2 radians per second
+      
+      indicator.userData.animationFrameId = requestAnimationFrame(animateRotation);
+    }
+    
+    // Start animation
+    animateRotation();
+    
+    return selectedBlock;
+  }
+  
+  return null;
+}
+
+/**
+ * Rotates a block based on mouse movement
+ */
+export function rotateBlock(
+  block: THREE.Mesh,
+  deltaX: number,
+  deltaY: number
+): void {
+  if (!block) return;
+  
+  // Define rotation sensitivity
+  const sensitivity = 0.01;
+  
+  // Apply rotation based on mouse movement (only Y rotation for simplicity)
+  block.rotation.y += deltaX * sensitivity;
+  
+  // Save the block's state in local storage
 }
 
 export { updateBlockCounter }; 

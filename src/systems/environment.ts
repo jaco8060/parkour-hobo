@@ -26,120 +26,6 @@ export function setupLighting(scene: THREE.Scene): void {
 }
 
 /**
- * Creates the ground plane
- */
-export function createGround(scene: THREE.Scene): THREE.Mesh {
-  const size = ENVIRONMENT_SETTINGS.GROUND_SIZE;
-  const groundGeometry = new THREE.PlaneGeometry(size, size);
-  const groundMaterial = new THREE.MeshStandardMaterial({ 
-    color: ENVIRONMENT_SETTINGS.GROUND_COLOR, 
-    roughness: 0.8, 
-    metalness: 0.2 
-  });
-  
-  const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = 0;
-  ground.receiveShadow = true;
-  ground.name = "Ground";
-  scene.add(ground);
-  
-  return ground;
-}
-
-/**
- * Creates a city environment with random buildings
- */
-export function createCityEnvironment(scene: THREE.Scene): void {
-  // Create some buildings
-  for (let i = 0; i < 20; i++) {
-    const width = 5 + Math.random() * 10;
-    const height = 10 + Math.random() * 40;
-    const depth = 5 + Math.random() * 10;
-    
-    const buildingGeometry = new THREE.BoxGeometry(width, height, depth);
-    const buildingMaterial = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0.3 + Math.random() * 0.5, 0.3 + Math.random() * 0.5, 0.3 + Math.random() * 0.5),
-      roughness: 0.7,
-      metalness: 0.2
-    });
-    
-    const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
-    building.position.set(
-      -50 + Math.random() * 100,
-      height / 2,
-      -50 + Math.random() * 100
-    );
-    
-    // Don't place buildings too close to the spawn point
-    if (building.position.distanceTo(new THREE.Vector3(0, 0, 0)) > 10) {
-      building.castShadow = true;
-      building.receiveShadow = true;
-      scene.add(building);
-    }
-  }
-  
-  // Create parkour platforms
-  createParkourPlatforms(scene);
-}
-
-/**
- * Creates parkour platforms for the city environment
- */
-export function createParkourPlatforms(scene: THREE.Scene): THREE.Mesh[] {
-  const platforms: THREE.Mesh[] = [];
-  
-  // Create platforms for parkour
-  const platformPositions = [
-    { x: 5, y: 1, z: 5, type: "garbage" },
-    { x: 8, y: 2, z: 10, type: "garbage" },
-    { x: 12, y: 3, z: 15, type: "rooftop" },
-    { x: 15, y: 4, z: 12, type: "rooftop" },
-    { x: 18, y: 5, z: 8, type: "rooftop" },
-    { x: 20, y: 6, z: 4, type: "garbage" },
-    { x: 16, y: 3, z: 0, type: "garbage" },
-    { x: 10, y: 2, z: -5, type: "rooftop" },
-    { x: 5, y: 1, z: -10, type: "garbage" },
-    { x: -5, y: 1, z: -5, type: "garbage" },
-    { x: -10, y: 2, z: 0, type: "rooftop" },
-    { x: -15, y: 3, z: 5, type: "garbage" },
-    { x: -10, y: 4, z: 10, type: "rooftop" },
-    { x: -5, y: 5, z: 15, type: "rooftop" }
-  ];
-  
-  platformPositions.forEach(platform => {
-    let geometry, material;
-    
-    if (platform.type === "garbage") {
-      // Garbage bag platform
-      geometry = new THREE.BoxGeometry(3, 1, 3);
-      material = new THREE.MeshStandardMaterial({ 
-        color: 0x2c3e50, 
-        roughness: 0.9,
-        metalness: 0.1
-      });
-    } else {
-      // Rooftop platform
-      geometry = new THREE.BoxGeometry(4, 0.5, 4);
-      material = new THREE.MeshStandardMaterial({ 
-        color: 0x95a5a6, 
-        roughness: 0.7,
-        metalness: 0.3
-      });
-    }
-    
-    const platformMesh = new THREE.Mesh(geometry, material);
-    platformMesh.position.set(platform.x, platform.y, platform.z);
-    platformMesh.castShadow = true;
-    platformMesh.receiveShadow = true;
-    scene.add(platformMesh);
-    platforms.push(platformMesh);
-  });
-  
-  return platforms;
-}
-
-/**
  * Sets up the course template with starter blocks
  */
 export function setupCourseTemplate(scene: THREE.Scene, templateSize: string = "medium"): THREE.Mesh[] {
@@ -174,6 +60,7 @@ export function setupCourseTemplate(scene: THREE.Scene, templateSize: string = "
   
   const floorPlatform = new THREE.Mesh(floorGeometry, floorMaterial);
   floorPlatform.position.set(0, 0, 0); // Centered at origin
+  floorPlatform.rotation.set(0, 0, 0); // Centered at origin
   floorPlatform.receiveShadow = true;
   floorPlatform.castShadow = true;
   floorPlatform.userData = { type: 'floor' };
@@ -194,6 +81,7 @@ export function setupCourseTemplate(scene: THREE.Scene, templateSize: string = "
   
   const startBlock = new THREE.Mesh(startGeometry, startMaterial);
   startBlock.position.set(-BLOCK_TYPES.FLOOR_PLATFORM.size.width/2 + 3, 1, 0); // Position at the left edge of the platform
+  startBlock.rotation.set(0, 0, 0); 
   startBlock.receiveShadow = true;
   startBlock.castShadow = true;
   startBlock.userData = { type: 'start' };

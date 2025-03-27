@@ -53,10 +53,11 @@ import {
   createBuilderUI, 
   createBuilderToolbar, 
   updateToolbarSelection, 
-  createBuilderDebugUI,
   createCrosshair,
   updateCrosshair,
   highlightBlockForRemoval,
+  highlightBlockForRotation,
+  rotateBlock,
   saveCurrentCourse,
   updateBlockCounter
 } from "./systems/builder.js";
@@ -531,9 +532,13 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
   gameStarted = false;
   courseTemplate = courseData ? courseData.template : templateSize;
 
-  // Immediately update the localStorage with the current mode
+  // Immediately update the localStorage with the current mode and tool settings
+  // This must happen early to ensure mouse controls work correctly on initial load
   localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'builder');
   localStorage.setItem(STORAGE_KEYS.BUILDER_TEMPLATE, courseTemplate);
+  localStorage.setItem('currentBuilderTool', currentBuilderTool);
+  
+  console.log("Builder mode initialized with tool:", currentBuilderTool);
 
   // Hide player
   if (player) {
@@ -615,9 +620,38 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
       
       const block = new THREE.Mesh(geometry, material);
       block.position.set(blockData.position.x, blockData.position.y, blockData.position.z);
+      
+      // Apply rotation if available
+      if (blockData.rotation) {
+        block.rotation.set(blockData.rotation.x, blockData.rotation.y, blockData.rotation.z);
+      }
+      
       block.userData = { type: blockData.type };
       block.castShadow = true;
       block.receiveShadow = true;
+      
+      // Add direction arrow to start blocks
+      if (blockData.type === "start") {
+        // Create arrow geometry
+        const arrowGeometry = new THREE.ConeGeometry(0.5, 1, 8);
+        const arrowMaterial = new THREE.MeshStandardMaterial({ 
+          color: 0xff0000,
+          emissive: 0xff0000,
+          emissiveIntensity: 0.3
+        });
+        const arrow = new THREE.Mesh(arrowGeometry, arrowMaterial);
+        
+        // Position the arrow on top of the block pointing in the positive Z direction
+        const blockHeight = (block.geometry as THREE.BoxGeometry).parameters.height;
+        arrow.position.set(0, blockHeight/2 + 0.5, 0);
+        arrow.rotation.x = -Math.PI / 2; // Point along Z-axis
+        
+        // Add metadata to identify it
+        arrow.userData = { type: 'directionArrow' };
+        
+        // Add to block
+        block.add(arrow);
+      }
       
       scene.add(block);
       buildingBlocks.push(block);
@@ -628,10 +662,28 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
       }
     });
     
-    // Set camera to view course
-    const initialCameraSetup = getInitialCameraPosition(courseTemplate);
-    camera.position.copy(initialCameraSetup.position);
-    camera.rotation.copy(initialCameraSetup.rotation);
+    // Find start block to position camera
+    const startBlock = buildingBlocks.find(block => block.userData.type === "start");
+    if (startBlock) {
+      // Position camera above start block
+      const positionAboveBlock = startBlock.position.clone();
+      positionAboveBlock.y += 5; // 5 units above the start block
+      
+      // Move back a bit to get a good view
+      const cameraOffset = new THREE.Vector3(0, 0, 10);
+      cameraOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), startBlock.rotation.y);
+      positionAboveBlock.add(cameraOffset);
+      
+      camera.position.copy(positionAboveBlock);
+      
+      // Look at the start block
+      camera.lookAt(startBlock.position);
+    } else {
+      // Default camera position if no start block
+      const initialCameraSetup = getInitialCameraPosition(courseTemplate);
+      camera.position.copy(initialCameraSetup.position);
+      camera.rotation.copy(initialCameraSetup.rotation);
+    }
   } else {
     // Check for saved state in localStorage
     const savedState = loadBuilderState();
@@ -693,9 +745,38 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
         
         const block = new THREE.Mesh(geometry, material);
         block.position.set(blockData.position.x, blockData.position.y, blockData.position.z);
+        
+        // Apply rotation if available
+        if (blockData.rotation) {
+          block.rotation.set(blockData.rotation.x, blockData.rotation.y, blockData.rotation.z);
+        }
+        
         block.userData = { type: blockData.type };
         block.castShadow = true;
         block.receiveShadow = true;
+        
+        // Add direction arrow to start blocks
+        if (blockData.type === "start") {
+          // Create arrow geometry
+          const arrowGeometry = new THREE.ConeGeometry(0.5, 1, 8);
+          const arrowMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0xff0000,
+            emissive: 0xff0000,
+            emissiveIntensity: 0.3
+          });
+          const arrow = new THREE.Mesh(arrowGeometry, arrowMaterial);
+          
+          // Position the arrow on top of the block pointing in the positive Z direction
+          const blockHeight = (block.geometry as THREE.BoxGeometry).parameters.height;
+          arrow.position.set(0, blockHeight/2 + 0.5, 0);
+          arrow.rotation.x = -Math.PI / 2; // Point along Z-axis
+          
+          // Add metadata to identify it
+          arrow.userData = { type: 'directionArrow' };
+          
+          // Add to block
+          block.add(arrow);
+        }
         
         scene.add(block);
         buildingBlocks.push(block);
@@ -706,25 +787,43 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
         }
       });
       
-      // Restore camera position if saved
-      if (savedState.cameraPosition) {
+      // Find start block to position camera
+      const startBlock = buildingBlocks.find(block => block.userData.type === "start");
+      if (startBlock) {
+        // Position camera above start block
+        const positionAboveBlock = startBlock.position.clone();
+        positionAboveBlock.y += 5; // 5 units above the start block
+        
+        // Move back a bit to get a good view
+        const cameraOffset = new THREE.Vector3(0, 0, 10);
+        cameraOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), startBlock.rotation.y);
+        positionAboveBlock.add(cameraOffset);
+        
+        camera.position.copy(positionAboveBlock);
+        
+        // Look at the start block
+        camera.lookAt(startBlock.position);
+      } else if (savedState.cameraPosition) {
+        // Use saved camera position if no start block
         camera.position.set(
           savedState.cameraPosition.x,
           savedState.cameraPosition.y,
           savedState.cameraPosition.z
         );
+        
+        // Restore camera rotation if saved
+        if (savedState.cameraRotation) {
+          camera.rotation.set(
+            savedState.cameraRotation.x,
+            savedState.cameraRotation.y,
+            savedState.cameraRotation.z
+          );
+        } else {
+          camera.rotation.set(-0.3, 0, 0);
+        }
       } else {
+        // Default camera position if no start block or saved position
         camera.position.set(0, 10, 20);
-      }
-      
-      // Restore camera rotation if saved
-      if (savedState.cameraRotation) {
-        camera.rotation.set(
-          savedState.cameraRotation.x,
-          savedState.cameraRotation.y,
-          savedState.cameraRotation.z
-        );
-      } else {
         camera.rotation.set(-0.3, 0, 0);
       }
       
@@ -736,7 +835,6 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
       if (savedState.selectedBlockType) {
         selectedBlockType = savedState.selectedBlockType;
       }
-      
     } else {
       // Setup a new course template if no saved state exists
       console.log("No saved builder state found, creating new template");
@@ -749,10 +847,28 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
         }
       });
       
-      // Set better initial camera position for viewing the template
-      const initialCameraSetup = getInitialCameraPosition(templateSize);
-      camera.position.copy(initialCameraSetup.position);
-      camera.rotation.copy(initialCameraSetup.rotation);
+      // Find start block to position camera
+      const startBlock = buildingBlocks.find(block => block.userData.type === "start");
+      if (startBlock) {
+        // Position camera above start block
+        const positionAboveBlock = startBlock.position.clone();
+        positionAboveBlock.y += 5; // 5 units above the start block
+        
+        // Move back a bit to get a good view
+        const cameraOffset = new THREE.Vector3(0, 0, 10);
+        cameraOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), startBlock.rotation.y);
+        positionAboveBlock.add(cameraOffset);
+        
+        camera.position.copy(positionAboveBlock);
+        
+        // Look at the start block
+        camera.lookAt(startBlock.position);
+      } else {
+        // Set better initial camera position for viewing the template if no start block
+        const initialCameraSetup = getInitialCameraPosition(templateSize);
+        camera.position.copy(initialCameraSetup.position);
+        camera.rotation.copy(initialCameraSetup.rotation);
+      }
     }
   }
   
@@ -845,6 +961,9 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
         // Update crosshair appearance based on tool
         updateCrosshair(tool);
         
+        // Save the current tool to localStorage for reference in other functions
+        localStorage.setItem('currentBuilderTool', currentBuilderTool);
+        
         // Save state when tool changes
         saveBuilderState(
           builderMode,
@@ -861,7 +980,7 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
     createCrosshair();
     updateCrosshair(currentBuilderTool);
     
-    createBuilderDebugUI(buildControls);
+    // createBuilderDebugUI(buildControls);
     
     // Setup mouse handlers
     setupBuilderMouseHandlers(
@@ -899,6 +1018,11 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
           // Make sure visibility matches the current tool
           placementPreview.visible = currentBuilderTool === "build";
         }
+        
+        // Highlight block for rotation if in rotate mode
+        if (currentBuilderTool === "rotate") {
+          highlightBlockForRotation(camera, buildingBlocks, BUILDER_SETTINGS.REMOVAL_RANGE);
+        }
       },
       () => {
         // Place block function - only execute if in build mode
@@ -935,6 +1059,26 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
           isPlacingBlock = false;
         } else {
           // console.log("Not removing block. Tool:", currentBuilderTool, "isPlacingBlock:", isPlacingBlock);
+        }
+      },
+      (deltaX: number, deltaY: number) => {
+        // Rotate block function - only execute if in rotate mode
+        if (currentBuilderTool === "rotate") {
+          // Find the currently highlighted block
+          const blockToRotate = buildingBlocks.find(block => block.userData.rotationHighlighted);
+          if (blockToRotate) {
+            rotateBlock(blockToRotate, deltaX, deltaY);
+            
+            // Save state after rotation
+            saveBuilderState(
+              builderMode,
+              courseTemplate,
+              camera,
+              currentBuilderTool,
+              selectedBlockType,
+              buildingBlocks
+            );
+          }
         }
       }
     );
@@ -1087,7 +1231,7 @@ function handleCourseData(courseData: any): void {
   clearEnvironment(scene);
   
   // Create ground
-  createGround(scene);
+  // createGround(scene);
   
   // Clear existing blocks
   buildingBlocks = [];
