@@ -100,5 +100,7 @@ export const STORAGE_KEYS = {
   BUILDER_STATE: 'builderState',
   BUILDER_TEMPLATE: 'builderTemplate',
   LAST_MODE: 'lastMode',
-  SAVED_COURSES: 'savedCourses'
+  SAVED_COURSES: 'savedCourses',
+  LAST_PLAYER_POSITION: 'lastPlayerPosition',
+  LAST_BUILDER_CAMERA: 'lastBuilderCamera'
 }; 

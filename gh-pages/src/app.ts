@@ -27,7 +27,12 @@ import {
   resetBuilderLocalStorage,
   saveSavedCourses,
   loadSavedCourses,
-  clearBuilderState
+  clearBuilderState,
+  savePlayerPosition,
+  loadPlayerPosition,
+  saveBuilderCamera,
+  loadBuilderCamera,
+  findStartBlock
 } from "./utils/helpers.js";
 import { 
   setupLighting, 
@@ -333,6 +338,9 @@ function animate() {
       selectedBlockType,
       buildingBlocks
     );
+    
+    // Also save camera position
+    saveBuilderCamera(camera);
   }
   
   if (builderMode) {
@@ -385,6 +393,12 @@ function animate() {
       cameraRotationAngle,
       () => updateCamera(camera, player as THREE.Object3D, cameraRotationAngle)
     );
+    
+    // Periodically save player position
+    if (saveStateTimer >= SAVE_STATE_INTERVAL) {
+      saveStateTimer = 0;
+      savePlayerPosition(playerState);
+    }
     
     // Update camera rotation based on input
     if (keyState.rotateLeft) {
@@ -484,8 +498,13 @@ function handleResize() {
 function toggleGameMode() {
   if (builderMode) {
     // Switching from builder to player mode
+    console.log("Switching from builder to player mode");
+    
+    // Save the builder camera position before switching
+    saveBuilderCamera(camera);
+    
     builderMode = false;
-    localStorage.setItem('lastMode', 'player');
+    localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'player');
     
     // Clean up builder mouse handlers
     import('./systems/input.js').then(inputModule => {
@@ -499,8 +518,13 @@ function toggleGameMode() {
     exitBuilderMode();
   } else {
     // Switching from player to builder mode
+    console.log("Switching from player to builder mode");
+    
+    // Save the player position before switching
+    savePlayerPosition(playerState);
+    
     builderMode = true;
-    localStorage.setItem('lastMode', 'builder');
+    localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'builder');
     
     console.log("Entering builder mode...");
     const lastTemplate = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
@@ -508,9 +532,6 @@ function toggleGameMode() {
   }
   
   const newMode = builderMode ? 'builder' : 'player';
-  // Double-check mode switch was successful
-  // console.log(`Mode after toggle: ${newMode} (changed from ${previousMode})`);
-  // console.log(`localStorage mode: ${localStorage.getItem(STORAGE_KEYS.LAST_MODE)}`);
   
   // Check if toggle was effective
   if (newMode === 'player') {
@@ -561,6 +582,15 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
   switch(courseTemplate) {
     case "small": templateSizeValue = TEMPLATE_SIZES.SMALL; break;
     case "large": templateSizeValue = TEMPLATE_SIZES.LARGE; break;
+  }
+  
+  // Check if we should restore the previous camera position
+  const savedCameraState = loadBuilderCamera();
+  let shouldRestoreCamera = false;
+  
+  if (savedCameraState) {
+    console.log("Found saved camera position, will restore after loading blocks");
+    shouldRestoreCamera = true;
   }
   
   // Loading approach depends on whether we have a saved course or need to use local storage
@@ -1111,6 +1141,21 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
     buildingBlocks
   );
   
+  // If we have a saved camera position, restore it
+  if (shouldRestoreCamera && savedCameraState) {
+    console.log("Restoring saved camera position:", savedCameraState);
+    camera.position.set(
+      savedCameraState.position.x,
+      savedCameraState.position.y,
+      savedCameraState.position.z
+    );
+    camera.rotation.set(
+      savedCameraState.rotation.x,
+      savedCameraState.rotation.y,
+      savedCameraState.rotation.z
+    );
+  }
+  
   console.log("Builder mode entered successfully");
   
   // Show notification
@@ -1152,13 +1197,12 @@ function exitBuilderMode() {
     // Remove any outline effect and cancel animations
     const outline = block.children.find(child => child.userData?.type === 'outline');
     if (outline) {
-      // Cancel any ongoing animation
-      if (outline.userData && outline.userData.animationFrameId) {
-        cancelAnimationFrame(outline.userData.animationFrameId);
-      }
       block.remove(outline);
     }
   });
+  
+  // Clear any rotation indicators
+  clearAllRotationIndicators(buildingBlocks);
   
   // Clear the global targeted block reference
   window.__targetedBlockForRemoval = null;
@@ -1197,7 +1241,50 @@ function exitBuilderMode() {
   // Check if player exists and make it visible
   if (player) {
     player.visible = true;
-    player.position.set(0, 1, 0);
+    
+    // Find the start block to position the player
+    const startBlock = findStartBlock(buildingBlocks);
+    
+    if (startBlock) {
+      console.log("Found start block, positioning player at start");
+      // Position player on top of the start block
+      const startPos = startBlock.position.clone();
+      // Add height to place player on top of the block
+      const blockHeight = (startBlock.geometry as THREE.BoxGeometry).parameters.height || 1;
+      startPos.y += blockHeight * 0.5 + 1; // Add half block height plus 1 unit for player feet
+      
+      // Apply start block rotation to player direction
+      playerState.rotation.y = startBlock.rotation.y + Math.PI; // Add 180 degrees to flip the direction
+      
+      // Set the player position
+      playerState.position.copy(startPos);
+      player.position.copy(startPos);
+      player.rotation.y = startBlock.rotation.y + Math.PI; // Add 180 degrees to flip the direction
+      
+      // Also update camera to look at player in the correct direction
+      cameraRotationAngle = -startBlock.rotation.y; // Negative because camera faces opposite to player
+      
+      console.log("Player positioned at start:", startPos, "with rotation:", startBlock.rotation.y);
+    } else {
+      // If no start block, try to restore the last player position
+      const lastPosition = loadPlayerPosition();
+      
+      if (lastPosition) {
+        console.log("Restoring player's last position:", lastPosition);
+        playerState.position.set(lastPosition.x, lastPosition.y, lastPosition.z);
+        playerState.rotation.y = lastPosition.rotation;
+        player.position.set(lastPosition.x, lastPosition.y, lastPosition.z);
+        player.rotation.y = lastPosition.rotation;
+        cameraRotationAngle = -lastPosition.rotation;
+      } else {
+        // Default position if no start block or last position
+        console.log("No start block or last position found, using default position");
+        player.position.set(0, 1, 0);
+        // Set default rotation for player to match our 180-degree standard
+        player.rotation.y = Math.PI; 
+        playerState.rotation.y = Math.PI;
+      }
+    }
   } else {
     // If no player exists yet, create a placeholder player
     console.log("No player found, creating placeholder character");
@@ -1209,14 +1296,26 @@ function exitBuilderMode() {
         running: null,
         jumping: null
       };
+      
+      // Position the newly created player
+      const startBlock = findStartBlock(buildingBlocks);
+      if (startBlock) {
+        const startPos = startBlock.position.clone();
+        const blockHeight = (startBlock.geometry as THREE.BoxGeometry).parameters.height || 1;
+        startPos.y += blockHeight * 0.5 + 1;
+        player.position.copy(startPos);
+        player.rotation.y = startBlock.rotation.y + Math.PI; // Add 180 degrees to flip direction
+        playerState.position.copy(startPos);
+        playerState.rotation.y = startBlock.rotation.y + Math.PI; // Add 180 degrees to flip direction
+        cameraRotationAngle = -startBlock.rotation.y;
+      }
     }).catch(error => {
       console.error("Failed to create placeholder player:", error);
     });
   }
   
-  // Reset camera
-  camera.position.copy(CAMERA_SETTINGS.DEFAULT_POSITION);
-  camera.rotation.copy(CAMERA_SETTINGS.DEFAULT_ROTATION);
+  // Reset camera position relative to player
+  updateCamera(camera, player as THREE.Object3D, cameraRotationAngle);
   
   console.log("Builder mode exited successfully, now in player mode");
   

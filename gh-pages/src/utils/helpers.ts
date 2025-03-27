@@ -255,4 +255,81 @@ export function convertBuilderStateToSavedCourse(
     startPosition: { x: startBlock.position.x, y: startBlock.position.y + 1, z: startBlock.position.z },
     finishPosition: { x: finishBlock.position.x, y: finishBlock.position.y, z: finishBlock.position.z }
   };
+}
+
+/**
+ * Saves the player's last position to localStorage
+ */
+export function savePlayerPosition(playerState: any): void {
+  try {
+    const position = {
+      x: playerState.position.x,
+      y: playerState.position.y,
+      z: playerState.position.z,
+      rotation: playerState.rotation.y
+    };
+    localStorage.setItem(STORAGE_KEYS.LAST_PLAYER_POSITION, JSON.stringify(position));
+  } catch (error) {
+    console.error("Error saving player position:", error);
+  }
+}
+
+/**
+ * Loads the player's last position from localStorage
+ */
+export function loadPlayerPosition(): {x: number, y: number, z: number, rotation: number} | null {
+  const positionStr = localStorage.getItem(STORAGE_KEYS.LAST_PLAYER_POSITION);
+  if (!positionStr) return null;
+  
+  try {
+    return JSON.parse(positionStr);
+  } catch (error) {
+    console.error("Error loading player position:", error);
+    return null;
+  }
+}
+
+/**
+ * Saves the builder camera position to localStorage
+ */
+export function saveBuilderCamera(camera: THREE.Camera): void {
+  try {
+    const cameraState = {
+      position: {
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z
+      },
+      rotation: {
+        x: camera.rotation.x,
+        y: camera.rotation.y,
+        z: camera.rotation.z
+      }
+    };
+    localStorage.setItem(STORAGE_KEYS.LAST_BUILDER_CAMERA, JSON.stringify(cameraState));
+  } catch (error) {
+    console.error("Error saving builder camera:", error);
+  }
+}
+
+/**
+ * Loads the builder camera position from localStorage
+ */
+export function loadBuilderCamera(): {position: {x: number, y: number, z: number}, rotation: {x: number, y: number, z: number}} | null {
+  const cameraStr = localStorage.getItem(STORAGE_KEYS.LAST_BUILDER_CAMERA);
+  if (!cameraStr) return null;
+  
+  try {
+    return JSON.parse(cameraStr);
+  } catch (error) {
+    console.error("Error loading builder camera:", error);
+    return null;
+  }
+}
+
+/**
+ * Finds the start block in the building blocks array
+ */
+export function findStartBlock(blocks: THREE.Mesh[]): THREE.Mesh | null {
+  return blocks.find(block => block.userData.type === "start") || null;
 } 

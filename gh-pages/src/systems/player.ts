@@ -96,8 +96,8 @@ export function createPlaceholderPlayer(scene: THREE.Scene): THREE.Object3D {
   // Add to scene
   scene.add(playerGroup);
   
-  // Make sure the player is facing forward (negative Z is forward in Three.js)
-  playerGroup.rotation.y = 0;
+  // Make the player face the opposite direction by default (negative Z is forward in Three.js)
+  playerGroup.rotation.y = Math.PI; // Rotate 180 degrees to face opposite direction
   
   // Mark as placeholder
   playerGroup.userData = { isPlaceholder: true };
