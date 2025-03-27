@@ -142,10 +142,6 @@ let keyState: KeyState = {
   sprint: false
 };
 
-// Timer for periodically saving builder state
-let saveStateTimer = 0;
-const SAVE_STATE_INTERVAL = 10; // Save every 10 seconds
-
 // Add a new variable to track whether the game was initialized in play-only mode
 let playOnlyMode = false;
 
@@ -307,9 +303,6 @@ function animate() {
   
   const deltaTime = Math.min(clock.getDelta(), 0.1);
   
-  // Update save timer
-  saveStateTimer += deltaTime;
-  
   // Check current mode from localStorage to ensure consistency
   const storedMode = localStorage.getItem(STORAGE_KEYS.LAST_MODE);
   const effectiveBuilderMode = builderMode || storedMode === 'builder';
@@ -325,22 +318,6 @@ function animate() {
     }
     
     builderMode = effectiveBuilderMode;
-  }
-  
-  // Periodically save builder state
-  if (builderMode && saveStateTimer >= SAVE_STATE_INTERVAL) {
-    saveStateTimer = 0;
-    saveBuilderState(
-      builderMode,
-      courseTemplate,
-      camera,
-      currentBuilderTool,
-      selectedBlockType,
-      buildingBlocks
-    );
-    
-    // Also save camera position
-    saveBuilderCamera(camera);
   }
   
   if (builderMode) {
@@ -393,12 +370,6 @@ function animate() {
       cameraRotationAngle,
       () => updateCamera(camera, player as THREE.Object3D, cameraRotationAngle)
     );
-    
-    // Periodically save player position
-    if (saveStateTimer >= SAVE_STATE_INTERVAL) {
-      saveStateTimer = 0;
-      savePlayerPosition(playerState);
-    }
     
     // Update camera rotation based on input
     if (keyState.rotateLeft) {
@@ -1063,7 +1034,7 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
       () => {
         // Place block function - only execute if in build mode
         if (currentBuilderTool === "build" && !isPlacingBlock) {
-          console.log("BLOCK COUNTER DEBUG - Before placing block:", buildingBlocks.length);
+          // console.log("BLOCK COUNTER DEBUG - Before placing block:", buildingBlocks.length);
           isPlacingBlock = true;
           
           if (!placementPreview) {
@@ -1078,8 +1049,8 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
           }
           
           placeBlock(scene, placementPreview, selectedBlockType, buildingBlocks, platforms);
-          console.log("BLOCK COUNTER DEBUG - After placing block:", buildingBlocks.length);
-          console.log("BLOCK COUNTER DEBUG - Platforms array length:", platforms.length);
+          // console.log("BLOCK COUNTER DEBUG - After placing block:", buildingBlocks.length);
+          // console.log("BLOCK COUNTER DEBUG - Platforms array length:", platforms.length);
           isPlacingBlock = false;
         } else {
           // console.log("Not placing block. Tool:", currentBuilderTool, "isPlacingBlock:", isPlacingBlock);

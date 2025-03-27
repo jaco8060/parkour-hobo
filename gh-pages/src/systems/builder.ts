@@ -559,8 +559,8 @@ export function removeBlock(
     return;
   }
   
-  console.log("BLOCK DEBUG - Remove - Building blocks before:", buildingBlocks.length);
-  console.log("BLOCK DEBUG - Remove - Platforms before:", platforms.length);
+  // console.log("BLOCK DEBUG - Remove - Building blocks before:", buildingBlocks.length);
+  // console.log("BLOCK DEBUG - Remove - Platforms before:", platforms.length);
   
   // Get the currently highlighted block from the global reference
   const blockToRemove = window.__targetedBlockForRemoval as THREE.Mesh | null;
