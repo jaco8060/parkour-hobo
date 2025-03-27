@@ -698,7 +698,8 @@ export function createBuilderUI(
     {},
     {
       margin: "0 0 10px 0",
-      textAlign: "center"
+      textAlign: "center",
+      fontFamily: "'Press Start 2P'",
     },
     "Course Builder"
   );
@@ -931,25 +932,25 @@ export function createBuilderUI(
   );
   saveButton.addEventListener("click", () => {
     import('../components/Overlay.js').then(overlayModule => {
-      // We don't need to reset controls here since the modal will do it
-      
       // Show the modal with pixelated form styling but cleaner background
       overlayModule.showModal("Save Course", `
         <div style="display: flex; flex-direction: column; gap: 20px; padding: 15px; background-color: rgba(0, 0, 0, 0.5); border-radius: 8px; border: 2px solid #4CAF50;">
           <label for="course-name" style="margin-bottom: 5px; display: block; color: white; text-shadow: 2px 2px 0 #000;">Course Name:</label>
           <input type="text" id="course-name" style="padding: 12px; font-size: 16px; border: 2px solid #4CAF50; background: #333; color: white; border-radius: 4px; font-family: 'Press Start 2P', monospace;" 
                 placeholder="My Awesome Course"/>
-          <div style="display: flex; justify-content: center; margin-top: 15px;">
+          <div style="display: flex; justify-content: space-between; margin-top: 15px;">
             <button id="save-course-btn" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-family: 'Press Start 2P', monospace; box-shadow: 3px 3px 0 #333; transition: transform 0.1s;">Save Course</button>
+            <button id="close-modal-btn" style="padding: 10px 20px; background-color: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-family: 'Press Start 2P', monospace; box-shadow: 3px 3px 0 #333; transition: transform 0.1s;">Close</button>
           </div>
-          <p style="color: #aaa; font-size: 10px; margin-top: 10px; text-align: center;">Press ESC or click outside to cancel</p>
+          <p style="color: #aaa; font-size: 10px; margin-top: 10px; text-align: center;">Press ESC to cancel</p>
         </div>
-      `);
+      `, false, false);
       
       // Add event listeners for the save button and input field with hover effects
       setTimeout(() => {
         const input = document.getElementById("course-name") as HTMLInputElement;
         const saveBtn = document.getElementById("save-course-btn");
+        const closeBtn = document.getElementById("close-modal-btn");
         
         if (input) {
           // Make sure the input is focused
@@ -963,8 +964,7 @@ export function createBuilderUI(
               const courseName = input.value.trim();
               if (courseName) {
                 saveCurrentCourse(courseName, buildingBlocks, selectedBlockType);
-                // Close the modal after saving
-                document.getElementById("modal-overlay")?.remove();
+                // Modal will be closed by the saveCurrentCourse function
               } else {
                 overlayModule.showNotification("Please enter a course name", 3000);
               }
@@ -990,9 +990,7 @@ export function createBuilderUI(
             
             if (courseName) {
               saveCurrentCourse(courseName, buildingBlocks, selectedBlockType);
-              
-              // Close the modal after saving (direct DOM removal)
-              document.getElementById("modal-overlay")?.remove();
+              // Modal will be closed by the saveCurrentCourse function
             } else {
               overlayModule.showNotification("Please enter a course name", 3000);
               
@@ -1000,6 +998,41 @@ export function createBuilderUI(
               setTimeout(() => {
                 courseNameInput?.focus();
               }, 100);
+            }
+          });
+        }
+        
+        if (closeBtn) {
+          // Add hover effects
+          closeBtn.addEventListener("mouseover", () => {
+            (closeBtn as HTMLElement).style.transform = "scale(1.05)";
+          });
+          
+          closeBtn.addEventListener("mouseout", () => {
+            (closeBtn as HTMLElement).style.transform = "scale(1)";
+          });
+          
+          closeBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            
+            // Close the modal using the global function
+            if ((window as any).__closeCurrentModal) {
+              (window as any).__closeCurrentModal();
+            } else if (overlayModule.closeModal) {
+              // Use the exported function if available
+              overlayModule.closeModal();
+            } else {
+              // Fallback
+              const modalOverlay = document.getElementById("modal-overlay");
+              if (modalOverlay) {
+                modalOverlay.remove();
+              }
+            }
+            
+            // Ensure focus is restored to the game container
+            const gameContainer = document.getElementById("game-container");
+            if (gameContainer) {
+              gameContainer.focus();
             }
           });
         }
@@ -1354,7 +1387,18 @@ export function saveCurrentCourse(
   }
   
   saveSavedCourses(savedCourses);
+  
+  // Show notification
   showNotification(`Course "${courseName}" saved successfully!`, 3000);
+  
+  // Close the modal after saving successfully
+  // Use the global closeModal function if available
+  if ((window as any).__closeCurrentModal) {
+    (window as any).__closeCurrentModal();
+  } else {
+    // Fallback to removing the modal directly
+    removeElement("modal-overlay");
+  }
 }
 
 /**
@@ -1382,7 +1426,9 @@ function updateBlockCounter(
         fontSize: "12px",
         zIndex: "9999",
         border: "2px solid #4CAF50",
-        pointerEvents: "none"
+        pointerEvents: "none",
+        minWidth: "200px",
+        whiteSpace: "nowrap"
       }
     );
     
@@ -1413,27 +1459,27 @@ function updateBlockCounter(
   else if (percentUsed > 75) progressColor = "#ff9900"; // Orange
   else if (percentUsed > 50) progressColor = "#ffff00"; // Yellow
   
-  // Create the HTML
+  // Create the HTML with improved layout - using 60% for labels to accommodate larger numbers
   counterContainer.innerHTML = `
     <div style="margin-bottom: 8px; text-align: center; font-weight: bold;">Block Counter</div>
-    <div style="margin-bottom: 5px;">
-      <span style="display: inline-block; width: 70%;">Total Blocks:</span>
-      <span style="font-weight: bold; color: ${percentUsed > 90 ? '#ff0000' : 'white'}">
-        ${totalBlocks} / ${blockLimit}
+    <div style="margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;">
+      <span style="display: inline-block; width: 60%;">Total Blocks:</span>
+      <span style="font-weight: bold; color: ${percentUsed > 90 ? '#ff0000' : 'white'}; text-align: right;">
+        ${totalBlocks}/${blockLimit}
       </span>
     </div>
     <div style="margin-bottom: 8px; height: 10px; background-color: #333; border-radius: 5px; overflow: hidden;">
       <div style="height: 100%; width: ${percentUsed}%; background-color: ${progressColor};"></div>
     </div>
-    <div style="margin-bottom: 3px;">
-      <span style="display: inline-block; width: 70%;">Start Blocks:</span>
-      <span style="${startBlocks === 1 ? 'color: #4CAF50;' : 'color: #ff9900;'} font-weight: bold;">
+    <div style="margin-bottom: 3px; display: flex; justify-content: space-between; align-items: center;">
+      <span style="display: inline-block; width: 60%;">Start Blocks:</span>
+      <span style="${startBlocks === 1 ? 'color: #4CAF50;' : 'color: #ff9900;'} font-weight: bold; text-align: right;">
         ${startBlocks} / 1
       </span>
     </div>
-    <div style="margin-bottom: 3px;">
-      <span style="display: inline-block; width: 70%;">Finish Blocks:</span>
-      <span style="${finishBlocks === 1 ? 'color: #4CAF50;' : 'color: #ff9900;'} font-weight: bold;">
+    <div style="margin-bottom: 3px; display: flex; justify-content: space-between; align-items: center;">
+      <span style="display: inline-block; width: 60%;">Finish Blocks:</span>
+      <span style="${finishBlocks === 1 ? 'color: #4CAF50;' : 'color: #ff9900;'} font-weight: bold; text-align: right;">
         ${finishBlocks} / 1
       </span>
     </div>

@@ -55,7 +55,7 @@ export function showMainMenu(
       textAlign: "center",
       marginBottom: "5vh",
       textShadow: "3px 3px 0 #4CAF50, 6px 6px 0 #333",
-      letterSpacing: "2px"
+      letterSpacing: "2px",
     },
     "PARKOUR HOBO<br>COURSE BUILDER"
   );

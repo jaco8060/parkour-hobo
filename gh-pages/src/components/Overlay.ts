@@ -102,7 +102,8 @@ export function getOverlayActive(): boolean {
 export function showModal(
   title: string,
   content: string,
-  onClose?: () => boolean | void
+  closeOnOutsideClickOrCallback?: boolean | (() => boolean | void),
+  showDefaultCloseButton: boolean = true
 ): void {
   const container = document.getElementById("game-container");
   if (!container) return;
@@ -173,7 +174,7 @@ export function showModal(
   const modalContent = createElement("div", 
     {},
     {
-      marginBottom: "20px",
+      marginBottom: showDefaultCloseButton ? "20px" : "0px",
       lineHeight: "1.4",
       fontFamily: "'Press Start 2P', 'Courier New', monospace",
       fontSize: "0.8em"
@@ -181,38 +182,51 @@ export function showModal(
     content
   );
   
-  const closeButton = createElement("button", 
-    { id: "modal-close-button" },
-    {
-      padding: "8px 16px",
-      backgroundColor: "#4CAF50",
-      color: "white",
-      border: "none",
-      borderRadius: "4px",
-      cursor: "pointer",
-      float: "right",
-      fontFamily: "'Press Start 2P', 'Courier New', monospace",
-      fontSize: "0.8em",
-      boxShadow: "3px 3px 0 #333",
-      transition: "transform 0.1s"
-    },
-    "Close"
-  );
+  modalBox.appendChild(modalTitle);
+  modalBox.appendChild(modalContent);
   
-  // Add hover effect
-  closeButton.addEventListener("mouseover", () => {
-    closeButton.style.transform = "scale(1.05)";
-  });
+  // Only add default close button if requested
+  if (showDefaultCloseButton) {
+    const closeButton = createElement("button", 
+      { id: "modal-close-button" },
+      {
+        padding: "8px 16px",
+        backgroundColor: "#4CAF50",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        cursor: "pointer",
+        float: "right",
+        fontFamily: "'Press Start 2P', 'Courier New', monospace",
+        fontSize: "0.8em",
+        boxShadow: "3px 3px 0 #333",
+        transition: "transform 0.1s"
+      },
+      "Close"
+    );
+    
+    // Add hover effect
+    closeButton.addEventListener("mouseover", () => {
+      closeButton.style.transform = "scale(1.05)";
+    });
+    
+    closeButton.addEventListener("mouseout", () => {
+      closeButton.style.transform = "scale(1)";
+    });
+    
+    closeButton.addEventListener("click", closeModal);
+    modalBox.appendChild(closeButton);
+  }
   
-  closeButton.addEventListener("mouseout", () => {
-    closeButton.style.transform = "scale(1)";
-  });
+  modalOverlay.appendChild(modalBox);
+  container.appendChild(modalOverlay);
   
   // Function to handle closing the modal
-  const closeModal = () => {
-    if (onClose) {
-      // If onClose returns false explicitly, don't close the modal
-      const result = onClose();
+  function closeModal() {
+    // Check if the third parameter is a callback function
+    if (typeof closeOnOutsideClickOrCallback === 'function') {
+      // If callback returns false explicitly, don't close the modal
+      const result = closeOnOutsideClickOrCallback();
       if (result === false) {
         return;
       }
@@ -226,8 +240,10 @@ export function showModal(
     // Remove the modal element
     removeElement("modal-overlay");
     
-    // Restore original cursor style
-    container.style.cursor = originalCursorStyle;
+    // Restore original cursor style - Fix for null safety
+    if (container) {
+      container.style.cursor = originalCursorStyle;
+    }
     
     // Make sure context menu stays disabled after modal closes
     setTimeout(() => {
@@ -237,19 +253,14 @@ export function showModal(
         return false;
       };
       
-      container.addEventListener('contextmenu', preventContextMenu);
-      document.body.addEventListener('contextmenu', preventContextMenu);
-      document.addEventListener('contextmenu', preventContextMenu);
+      // Fix for null safety
+      if (container) {
+        container.addEventListener('contextmenu', preventContextMenu);
+        document.body.addEventListener('contextmenu', preventContextMenu);
+        document.addEventListener('contextmenu', preventContextMenu);
+      }
     }, 100);
-  };
-  
-  closeButton.addEventListener("click", closeModal);
-  
-  modalBox.appendChild(modalTitle);
-  modalBox.appendChild(modalContent);
-  modalBox.appendChild(closeButton);
-  modalOverlay.appendChild(modalBox);
-  container.appendChild(modalOverlay);
+  }
   
   // Handle keydown events
   const keydownHandler = (event: KeyboardEvent) => {
@@ -262,10 +273,24 @@ export function showModal(
     }
   };
   
-  // Handle clicks outside the modal
+  // Handle clicks outside the modal - adjust for the new parameter type
   const outsideClickHandler = (event: MouseEvent) => {
+    // Determine if clicks outside should close the modal
+    let shouldCloseOnOutsideClick: boolean;
+    
+    if (typeof closeOnOutsideClickOrCallback === 'boolean') {
+      // If it's explicitly a boolean, use that value
+      shouldCloseOnOutsideClick = closeOnOutsideClickOrCallback;
+    } else if (typeof closeOnOutsideClickOrCallback === 'function') {
+      // If it's a function, default to true (we'll call the function when actually closing)
+      shouldCloseOnOutsideClick = true;
+    } else {
+      // If undefined, default to true
+      shouldCloseOnOutsideClick = true;
+    }
+    
     // Check if the click was outside the modal box
-    if (modalBox && !modalBox.contains(event.target as Node) && event.target === modalOverlay) {
+    if (shouldCloseOnOutsideClick && modalBox && !modalBox.contains(event.target as Node) && event.target === modalOverlay) {
       // Only close if the click was on the overlay but not on a child element
       closeModal();
     }
@@ -448,4 +473,15 @@ function addPixelatedBackground(container: HTMLElement): void {
   const dataUrl = canvas.toDataURL();
   container.style.backgroundImage = `url(${dataUrl})`;
   container.style.backgroundSize = '100% 100%';
+}
+
+// Add this function to Overlay.ts - just export the global function
+export function closeModal(): void {
+  const closeModalFn = (window as any).__closeCurrentModal;
+  if (typeof closeModalFn === 'function') {
+    closeModalFn();
+  } else {
+    // Fallback if the global function isn't available
+    removeElement("modal-overlay");
+  }
 } 
