@@ -458,13 +458,9 @@ export function highlightBlockForRemoval(
       delete block.userData.originalMaterial;
     }
     
-    // Remove any outline effect and cancel animation
+    // Remove any outline effect
     const outline = block.children.find(child => child.userData?.type === 'outline');
     if (outline) {
-      // Cancel any ongoing animation
-      if (outline.userData && outline.userData.animationFrameId) {
-        cancelAnimationFrame(outline.userData.animationFrameId);
-      }
       block.remove(outline);
     }
   });
@@ -545,29 +541,7 @@ function createBlockOutline(block: THREE.Mesh): void {
   // Add to block
   block.add(outline);
   
-  // Create and store the animation function on the outline object
-  const startTime = Date.now();
-  
-  // Define the animation function
-  function pulseOutline() {
-    if (!block.parent) {
-      // Block has been removed, stop animation
-      return;
-    }
-    
-    // Calculate scale based on time
-    const elapsedTime = (Date.now() - startTime) / 1000;
-    const scale = 1 + 0.1 * Math.sin(elapsedTime * 5);
-    
-    // Apply scale to outline
-    outline.scale.set(scale, scale, scale);
-    
-    // Use outline's userData to store the animation frame ID for later cancellation
-    outline.userData.animationFrameId = requestAnimationFrame(pulseOutline);
-  }
-  
-  // Start the animation
-  pulseOutline();
+  // No animation - just a static outline
 }
 
 /**
@@ -600,12 +574,6 @@ export function removeBlock(
   const blockIndex = buildingBlocks.indexOf(blockToRemove);
   
   if (blockIndex !== -1) {
-    // Cancel any animations before removing
-    const outline = blockToRemove.children.find(child => child.userData?.type === 'outline');
-    if (outline && outline.userData && outline.userData.animationFrameId) {
-      cancelAnimationFrame(outline.userData.animationFrameId);
-    }
-    
     // Remove from scene
     scene.remove(blockToRemove);
     
@@ -1640,24 +1608,6 @@ export function highlightBlockForRotation(
     // Add to block
     selectedBlock.add(indicator);
     
-    // Create rotating animation for the indicator
-    const startTime = Date.now();
-    function animateRotation() {
-      if (!selectedBlock.parent) {
-        // Block has been removed, stop animation
-        return;
-      }
-      
-      // Rotate indicator
-      const elapsed = (Date.now() - startTime) / 1000;
-      indicator.rotation.z = elapsed * 2; // Rotate 2 radians per second
-      
-      indicator.userData.animationFrameId = requestAnimationFrame(animateRotation);
-    }
-    
-    // Start animation
-    animateRotation();
-    
     return selectedBlock;
   }
   
@@ -1681,6 +1631,22 @@ export function rotateBlock(
   block.rotation.y += deltaX * sensitivity;
   
   // Save the block's state in local storage
+}
+
+/**
+ * Clears all rotation indicators from blocks
+ */
+export function clearAllRotationIndicators(blocks: THREE.Mesh[]): void {
+  blocks.forEach(block => {
+    if (block.userData.rotationHighlighted) {
+      // Remove rotation indicator if it exists
+      const rotationIndicator = block.children.find(child => child.userData?.type === 'rotationIndicator');
+      if (rotationIndicator) {
+        block.remove(rotationIndicator);
+      }
+      delete block.userData.rotationHighlighted;
+    }
+  });
 }
 
 export { updateBlockCounter }; 

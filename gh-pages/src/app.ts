@@ -58,6 +58,7 @@ import {
   highlightBlockForRemoval,
   highlightBlockForRotation,
   rotateBlock,
+  clearAllRotationIndicators,
   saveCurrentCourse,
   updateBlockCounter
 } from "./systems/builder.js";
@@ -948,6 +949,11 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
           
           // Clear the targeted block reference
           window.__targetedBlockForRemoval = null;
+        }
+        
+        // If switching away from rotate tool, clear any rotation indicators
+        if (currentBuilderTool === "rotate" && tool !== "rotate") {
+          clearAllRotationIndicators(buildingBlocks);
         }
         
         currentBuilderTool = tool;
