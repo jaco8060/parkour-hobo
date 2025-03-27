@@ -187,12 +187,25 @@ class ParkourHoboCourseBuilder {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
     });
     
-    // Mouse events for placing blocks and highlighting
+    // Track if we're dragging the camera
+    let isDragging = false;
+    let dragStartTime = 0;
+    
+    this.renderer.domElement.addEventListener('mousedown', () => {
+      isDragging = false;
+      dragStartTime = Date.now();
+    });
+    
     this.renderer.domElement.addEventListener('mousemove', (event) => {
       // Calculate pointer position in normalized device coordinates
       const rect = this.renderer.domElement.getBoundingClientRect();
       this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      // If mouse is moving with button down, consider it a drag
+      if (event.buttons > 0 && Date.now() - dragStartTime > 100) {
+        isDragging = true;
+      }
       
       // Update placeholder position if in build mode
       if (this.isBuilderMode && this.selectedBlockType && this.currentTool === 'build') {
@@ -206,7 +219,8 @@ class ParkourHoboCourseBuilder {
     });
     
     this.renderer.domElement.addEventListener('click', () => {
-      if (this.isBuilderMode) {
+      // Only place/delete blocks if we're not dragging the camera
+      if (!isDragging && this.isBuilderMode) {
         if (this.currentTool === 'build' && this.selectedBlockType && this.canPlaceBlock) {
           this.buildBlock();
         } else if (this.currentTool === 'delete' && this.highlightedBlock) {
@@ -215,6 +229,9 @@ class ParkourHoboCourseBuilder {
           this.rotateBlock();
         }
       }
+      
+      // Reset drag state
+      isDragging = false;
     });
     
     // Keyboard events
