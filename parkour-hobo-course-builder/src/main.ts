@@ -4,7 +4,7 @@ import { Player } from './player';
 import { BlockFactory } from './blockFactory';
 import { CourseManager } from './courseManager';
 import { UI } from './ui';
-import { Course, Vector3 } from './types';
+import { Course, Vector3, Block } from './types';
 import './styles.css';
 
 class ParkourHoboCourseBuilder {
@@ -39,6 +39,11 @@ class ParkourHoboCourseBuilder {
 
   // Add this property to the class
   private gridHelper: THREE.GridHelper;
+
+  // Add these properties to the class
+  private highlightedBlock: Block | null = null;
+  private originalMaterial: THREE.Material | THREE.Material[] | null = null;
+  private deleteMaterial: THREE.MeshBasicMaterial;
 
   constructor() {
     // Initialize components
@@ -83,6 +88,13 @@ class ParkourHoboCourseBuilder {
     // Add grid helper
     this.gridHelper = new THREE.GridHelper(50, 50);
     this.scene.add(this.gridHelper);
+    
+    // Create a material for deletion highlighting
+    this.deleteMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0xff0000,  // Red
+      transparent: true,
+      opacity: 0.7
+    });
     
     // Set up UI callbacks
     this.setupUICallbacks();
@@ -149,7 +161,8 @@ class ParkourHoboCourseBuilder {
     });
     
     this.ui.setOnToolSelected((tool: string) => {
-      this.currentTool = tool;
+      // Set the current tool
+      this.setTool(tool);
       
       // Handle player mode tool
       if (tool === 'player') {
@@ -163,11 +176,6 @@ class ParkourHoboCourseBuilder {
       if (!this.isBuilderMode) {
         this.toggleMode();
       }
-      
-      // When selecting build tool, also handle block selection UI
-      if (tool === 'build') {
-        // No need to do anything special, the block selection is already handled
-      }
     });
   }
 
@@ -179,23 +187,33 @@ class ParkourHoboCourseBuilder {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
     });
     
-    // Mouse events for placing blocks
+    // Mouse events for placing blocks and highlighting
     this.renderer.domElement.addEventListener('mousemove', (event) => {
       // Calculate pointer position in normalized device coordinates
-      // (-1 to +1) for both components
       const rect = this.renderer.domElement.getBoundingClientRect();
       this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       
-      // Update placeholder position
-      if (this.isBuilderMode && this.selectedBlockType) {
+      // Update placeholder position if in build mode
+      if (this.isBuilderMode && this.selectedBlockType && this.currentTool === 'build') {
         this.updatePlaceholderPosition();
+      }
+      
+      // Highlight blocks when in delete mode
+      if (this.isBuilderMode && this.currentTool === 'delete') {
+        this.highlightBlockForDeletion();
       }
     });
     
     this.renderer.domElement.addEventListener('click', () => {
-      if (this.isBuilderMode && this.selectedBlockType && this.currentCourse) {
-        this.placeBlock();
+      if (this.isBuilderMode) {
+        if (this.currentTool === 'build' && this.selectedBlockType && this.canPlaceBlock) {
+          this.buildBlock();
+        } else if (this.currentTool === 'delete' && this.highlightedBlock) {
+          this.deleteHighlightedBlock();
+        } else if (this.currentTool === 'rotate' && this.selectedBlockType) {
+          this.rotateBlock();
+        }
       }
     });
     
@@ -261,6 +279,13 @@ class ParkourHoboCourseBuilder {
       
       // Show grid in builder mode
       this.gridHelper.visible = true;
+      
+      // Reset any highlighted blocks
+      if (this.highlightedBlock && this.originalMaterial) {
+        this.highlightedBlock.mesh!.material = this.originalMaterial;
+        this.highlightedBlock = null;
+        this.originalMaterial = null;
+      }
     } else {
       // Switch to player mode
       this.ui.showPlayerMode();
@@ -302,23 +327,6 @@ class ParkourHoboCourseBuilder {
       this.player.mesh.position.z + 5
     );
     this.camera.lookAt(this.player.mesh.position);
-  }
-
-  private placeBlock() {
-    if (!this.selectedBlockType || !this.currentCourse || !this.canPlaceBlock) return;
-    
-    // Handle different tools
-    switch (this.currentTool) {
-      case 'build':
-        this.buildBlock();
-        break;
-      case 'delete':
-        this.deleteBlock();
-        break;
-      case 'rotate':
-        this.rotateBlock();
-        break;
-    }
   }
 
   private buildBlock() {
@@ -365,41 +373,8 @@ class ParkourHoboCourseBuilder {
     this.updatePlaceholderPosition();
   }
 
-  private deleteBlock() {
-    if (!this.currentCourse) return;
-    
-    // Cast a ray to find which block we're pointing at
-    this.raycaster.setFromCamera(this.pointer, this.camera);
-    const intersects = this.raycaster.intersectObjects(this.scene.children);
-    
-    for (const intersect of intersects) {
-      // Skip grid, placeholders, etc.
-      if (!(intersect.object instanceof THREE.Mesh) || intersect.object === this.placeholderMesh) continue;
-      
-      // Find the block that matches this mesh
-      const blockIndex = this.currentCourse.blocks.findIndex(block => 
-        block.mesh === intersect.object
-      );
-      
-      if (blockIndex >= 0) {
-        const block = this.currentCourse.blocks[blockIndex];
-        
-        // Remove from scene
-        this.scene.remove(block.mesh!);
-        
-        // Remove from blocks array
-        this.currentCourse.blocks.splice(blockIndex, 1);
-        
-        // Update block counter
-        this.updateBlockCounter();
-        
-        // Update placeholder validity
-        this.updatePlaceholderPosition();
-        
-        break;
-      }
-    }
-  }
+  
+  
 
   private rotateBlock() {
     // Rotate in 90 degree increments
@@ -626,6 +601,96 @@ class ParkourHoboCourseBuilder {
     }
     
     return true;
+  }
+
+  private highlightBlockForDeletion() {
+    // Reset previous highlighting
+    if (this.highlightedBlock && this.highlightedBlock.mesh && this.originalMaterial) {
+      this.highlightedBlock.mesh.material = this.originalMaterial;
+      this.highlightedBlock = null;
+      this.originalMaterial = null;
+    }
+    
+    if (!this.currentCourse) return;
+    
+    // Cast a ray to find which block we're pointing at
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const intersects = this.raycaster.intersectObjects(this.scene.children);
+    
+    for (const intersect of intersects) {
+      // Skip grid, placeholders, etc.
+      if (!(intersect.object instanceof THREE.Mesh) || 
+          intersect.object === this.placeholderMesh || 
+          intersect.object instanceof THREE.GridHelper) continue;
+      
+      // Find the block that matches this mesh
+      const block = this.currentCourse.blocks.find(b => b.mesh === intersect.object);
+      
+      if (block) {
+        // Store the highlighted block and its original material
+        this.highlightedBlock = block;
+        this.originalMaterial = block.mesh!.material;
+        
+        // Apply the red highlight material
+        block.mesh!.material = this.deleteMaterial;
+        break;
+      }
+    }
+  }
+
+  private deleteHighlightedBlock() {
+    if (!this.currentCourse || !this.highlightedBlock) return;
+    
+    const blockIndex = this.currentCourse.blocks.findIndex(
+      block => block === this.highlightedBlock
+    );
+    
+    if (blockIndex >= 0) {
+      const block = this.currentCourse.blocks[blockIndex];
+      
+      // Remove from scene
+      this.scene.remove(block.mesh!);
+      
+      // Remove from blocks array
+      this.currentCourse.blocks.splice(blockIndex, 1);
+      
+      // Update start/finish positions if needed
+      if (block.type === 'start') {
+        this.currentCourse.startPosition = { x: 0, y: 0, z: 0 };
+      } else if (block.type === 'finish') {
+        this.currentCourse.finishPosition = { x: 0, y: 0, z: 0 };
+      }
+      
+      // Clear the highlighted block
+      this.highlightedBlock = null;
+      this.originalMaterial = null;
+      
+      // Update block counter
+      this.updateBlockCounter();
+    }
+  }
+
+  // Update the tool selection method
+  public setTool(tool: string) {
+    this.currentTool = tool;
+    
+    // Hide placeholder when not in build mode
+    if (tool !== 'build' && this.placeholderMesh) {
+      this.scene.remove(this.placeholderMesh);
+      this.placeholderMesh = null;
+    }
+    
+    // Restore placeholder if switching to build mode
+    if (tool === 'build' && this.selectedBlockType && !this.placeholderMesh) {
+      this.updatePlaceholder();
+    }
+    
+    // Reset any highlighted blocks if switching away from delete tool
+    if (tool !== 'delete' && this.highlightedBlock && this.originalMaterial) {
+      this.highlightedBlock.mesh!.material = this.originalMaterial;
+      this.highlightedBlock = null;
+      this.originalMaterial = null;
+    }
   }
 }
 
