@@ -11,13 +11,6 @@ export function isMobileDevice(): boolean {
 }
 
 /**
- * Sends a message to the parent window
- */
-export function sendMessageToParent(type: string, data: any = {}): void {
-  window.parent.postMessage({ type, data }, "*");
-}
-
-/**
  * Saves builder state to localStorage
  */
 export function saveBuilderState(

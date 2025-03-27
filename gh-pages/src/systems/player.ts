@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { PlayerState, KeyState, AnimationActions } from "../utils/types.js";
 import { PLAYER_SETTINGS } from "../utils/config.js";
-import { sendMessageToParent } from "../utils/helpers.js";
+
 
 /**
  * Creates a placeholder player character
@@ -115,8 +115,7 @@ export function loadPlayerCharacter(
   // For now use placeholder box, switch to GLTF loader when character model is ready
   const player = createPlaceholderPlayer(scene);
   
-  // Send initial position
-  sendPositionUpdate(player);
+
   
   // Since we're using placeholder, skip animation setup
   onLoaded(player, null as any, {
@@ -386,8 +385,7 @@ export function updatePlayer(
     playerState.velocity.set(0, 0, 0);
   }
   
-  // Send position update to parent
-  sendPositionUpdate(player, playerState);
+
 }
 
 /**
@@ -466,21 +464,6 @@ function getActionByName(
     case "jumping": return actions.jumping;
     default: return null;
   }
-}
-
-/**
- * Sends player position update to parent window
- */
-export function sendPositionUpdate(player: THREE.Object3D, playerState?: PlayerState): void {
-  if (!player) return;
-  
-  sendMessageToParent("positionUpdate", {
-    x: player.position.x,
-    y: player.position.y,
-    z: player.position.z,
-    onGround: playerState?.onGround ?? true,
-    animation: playerState?.currentAnimation ?? "idle"
-  });
 }
 
 /**

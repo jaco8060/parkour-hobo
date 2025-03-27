@@ -1,7 +1,7 @@
 // Builder system to handle builder mode functionality
 import * as THREE from "three";
 import { BLOCK_TYPES, BUILDER_SETTINGS, BLOCK_LIMITS, STORAGE_KEYS } from "../utils/config.js";
-import { createElement, removeElement, sendMessageToParent, saveBuilderState, loadSavedCourses, saveSavedCourses, convertBuilderStateToSavedCourse } from "../utils/helpers.js";
+import { createElement, removeElement, saveBuilderState, loadSavedCourses, saveSavedCourses, convertBuilderStateToSavedCourse } from "../utils/helpers.js";
 import { BlockData, BuildControls, CourseData, SavedCourse } from "../utils/types.js";
 import { showNotification } from "../components/Overlay.js";
 
@@ -653,9 +653,6 @@ export function saveCourse(
     }
   };
   
-  // Send message to parent
-  sendMessageToParent("courseCreated", courseData);
-  console.log("Course saved:", courseData);
 }
 
 /**

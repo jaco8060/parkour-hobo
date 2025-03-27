@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { KeyState, BuildControls } from "../utils/types.js";
 import { getOverlayActive } from "../components/Overlay.js";
-import { sendMessageToParent, saveBuilderState } from "../utils/helpers.js";
+import { saveBuilderState } from "../utils/helpers.js";
 
 /**
  * Set up all event listeners for the application
@@ -340,15 +340,12 @@ export function handleParentMessage(
     builderMode = false; // Exit builder mode
     console.log("Game started");
     
-    // Send message to parent
-    sendMessageToParent("gameStarted");
+
   } else if (event.data.type === "startBuilder") {
     const template = event.data.data?.template || "medium";
     localStorage.setItem('builderTemplate', template);
     console.log("Builder mode started with template:", template);
-    
-    // Send message to parent 
-    sendMessageToParent("builderStarted");
+
   }
 }
 

@@ -24,7 +24,6 @@ import {
   loadBuilderState, 
   removeElement, 
   saveBuilderState, 
-  sendMessageToParent,
   resetBuilderLocalStorage,
   saveSavedCourses,
   loadSavedCourses,
@@ -42,8 +41,7 @@ import {
   updatePlayer, 
   updateCamera, 
   updatePlayerAnimation, 
-  resetPlayerState, 
-  sendPositionUpdate 
+  resetPlayerState
 } from "./systems/player.js";
 import { 
   updateBuilderCamera, 
@@ -205,9 +203,6 @@ function init() {
   // Start animation loop (always runs even with menu showing)
   animate();
   
-  // Send ready message
-  sendMessageToParent("webViewReady");
-  console.log("Sent webViewReady message");
 }
 
 /**
