@@ -1,6 +1,6 @@
 // Builder system to handle builder mode functionality
 import * as THREE from "three";
-import { BLOCK_TYPES, BUILDER_SETTINGS } from "../utils/config.js";
+import { BLOCK_TYPES, BUILDER_SETTINGS, BLOCK_LIMITS, STORAGE_KEYS } from "../utils/config.js";
 import { createElement, removeElement, sendMessageToParent, saveBuilderState, loadSavedCourses, saveSavedCourses, convertBuilderStateToSavedCourse } from "../utils/helpers.js";
 import { BlockData, BuildControls, CourseData, SavedCourse } from "../utils/types.js";
 import { showNotification } from "../components/Overlay.js";
@@ -300,8 +300,46 @@ export function placeBlock(
 ): void {
   if (!placementPreview) return;
   
-  console.log("BLOCK DEBUG - Building blocks array before:", buildingBlocks.length);
-  console.log("BLOCK DEBUG - Platforms array before:", platforms.length);
+  // Get the game container for notifications
+  const container = document.getElementById("game-container");
+  if (!container) return;
+  
+  // Check block limits
+  let blockLimit;
+  const courseTemplate = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
+  
+  switch(courseTemplate.toLowerCase()) {
+    case "small": blockLimit = BLOCK_LIMITS.SMALL; break;
+    case "large": blockLimit = BLOCK_LIMITS.LARGE; break;
+    case "medium":
+    default: blockLimit = BLOCK_LIMITS.MEDIUM;
+  }
+  
+  // Check if we've reached the block limit
+  if (buildingBlocks.length >= blockLimit) {
+    import('../components/Overlay.js').then(overlayModule => {
+      overlayModule.showNotification(`Block limit reached (${blockLimit})!`, 3000);
+    });
+    return;
+  }
+  
+  // Check for start/finish block limits
+  const startBlocks = buildingBlocks.filter(b => b.userData?.type === 'start').length;
+  const finishBlocks = buildingBlocks.filter(b => b.userData?.type === 'finish').length;
+  
+  if (selectedBlockType === 'start' && startBlocks >= 1) {
+    import('../components/Overlay.js').then(overlayModule => {
+      overlayModule.showNotification("Only one Start block allowed!", 3000);
+    });
+    return;
+  }
+  
+  if (selectedBlockType === 'finish' && finishBlocks >= 1) {
+    import('../components/Overlay.js').then(overlayModule => {
+      overlayModule.showNotification("Only one Finish block allowed!", 3000);
+    });
+    return;
+  }
   
   // Check if there's already a block at this position (within a small distance)
   const position = placementPreview.position.clone();
@@ -378,11 +416,8 @@ export function placeBlock(
     platforms.push(block);
   }
   
-  console.log("BLOCK DEBUG - Building blocks array after:", buildingBlocks.length);
-  console.log("BLOCK DEBUG - Platforms array after:", platforms.length);
-  console.log("BLOCK DEBUG - Arrays are same object?", buildingBlocks === platforms);
-  
-  // console.log(`Placed ${selectedBlockType} block at position:`, block.position);
+  // After successfully placing the block, update the block counter
+  updateBlockCounter(buildingBlocks, courseTemplate, container);
 }
 
 /**
@@ -560,8 +595,12 @@ export function removeBlock(
       platforms.splice(platformIndex, 1);
     }
     
-    console.log("BLOCK DEBUG - Remove - Building blocks after:", buildingBlocks.length);
-    console.log("BLOCK DEBUG - Remove - Platforms after:", platforms.length);
+    // Update the block counter
+    const container = document.getElementById("game-container");
+    if (container) {
+      const courseTemplate = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
+      updateBlockCounter(buildingBlocks, courseTemplate, container);
+    }
     
     // Clear the targeted block reference
     window.__targetedBlockForRemoval = null;
@@ -712,7 +751,15 @@ export function createBuilderUI(
     
     button.prepend(colorIndicator);
     
+    // Add the data-block-type attribute to identify the button type
+    button.setAttribute('data-block-type', type);
+    
     button.addEventListener("click", () => {
+      // Don't allow selecting disabled buttons
+      if (button.hasAttribute('disabled')) {
+        return;
+      }
+      
       onBlockTypeChange(type);
       
       // Update button styles
@@ -998,65 +1045,19 @@ export function createBuilderUI(
     <p style="margin: 2px 0">Left Click - Place block</p>
     <p style="margin: 2px 0">Shift - Sprint (move faster)</p>
     <p style="margin: 2px 0">Use toolbar for tools</p>
+    <p style="margin: 2px 0; color:rgb(224, 174, 47)">Bress B to toggle between player and build mode!</p>
     <p style="margin: 2px 0; color: #ffeb3b">Need start and finish blocks!</p>
+    
     `
   );
   builderUI.appendChild(instructions);
   
   // Block counter - Create it once and populate
-  const counterContainer = createElement("div", 
-    { id: "block-counter" },
-    {
-      marginTop: "10px",
-      backgroundColor: "rgba(0, 0, 0, 0.5)",
-      padding: "5px",
-      borderRadius: "4px"
-    }
-  );
-  
-  // Add counter container to UI before populating (ensuring it exists)
-  builderUI.appendChild(counterContainer);
-  
-  // Function to update counter with current values
-  const updateBlockCounter = () => {
-    if (!counterContainer) return;
-    
-    // Get current counts (at the moment of update)
-    const totalBlocks = buildingBlocks.length;
-    const startBlocks = buildingBlocks.filter(b => b.userData && b.userData.type === 'start').length;
-    const finishBlocks = buildingBlocks.filter(b => b.userData && b.userData.type === 'finish').length;
-    
-    counterContainer.innerHTML = `
-      <p style="margin: 0">Blocks placed: ${totalBlocks}</p>
-      <p style="margin: 0">Start blocks: ${startBlocks}</p>
-      <p style="margin: 0">Finish blocks: ${finishBlocks}</p>
-    `;
-  };
-  
-  // Initial update
-  updateBlockCounter();
+  const courseTemplate = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
+  updateBlockCounter(buildingBlocks, courseTemplate, container);
   
   // Add UI to game container
   container.appendChild(builderUI);
-  
-  // Update block counter periodically with a more stable approach
-  let lastTotalBlocks = -1; // Initialize with invalid value to force first update
-  
-  const counterInterval = setInterval(() => {
-    // Only update when actual changes happen to avoid visual flickering
-    if (buildingBlocks.length !== lastTotalBlocks) {
-      lastTotalBlocks = buildingBlocks.length;
-      updateBlockCounter();
-    }
-  }, 500); // Reduce update frequency to avoid performance issues
-  
-  // Clean up the interval when the UI is removed
-  const cleanup = () => {
-    clearInterval(counterInterval);
-  };
-  
-  // Store the cleanup function on the window for later reference
-  (window as any).__blockCounterCleanup = cleanup;
 }
 
 /**
@@ -1354,4 +1355,118 @@ export function saveCurrentCourse(
   
   saveSavedCourses(savedCourses);
   showNotification(`Course "${courseName}" saved successfully!`, 3000);
-} 
+}
+
+/**
+ * Updates the block counter UI
+ */
+function updateBlockCounter(
+  buildingBlocks: THREE.Mesh[],
+  courseTemplate: string,
+  container: HTMLElement
+): void {
+  // Find or create the counter container
+  let counterContainer = document.getElementById("block-counter");
+  if (!counterContainer) {
+    counterContainer = createElement("div", 
+      { id: "block-counter" },
+      {
+        position: "fixed",
+        top: "10px",
+        right: "10px",
+        backgroundColor: "rgba(0, 0, 0, 0.7)",
+        padding: "10px",
+        borderRadius: "5px",
+        color: "white",
+        fontFamily: "'Press Start 2P', monospace",
+        fontSize: "12px",
+        zIndex: "9999",
+        border: "2px solid #4CAF50",
+        pointerEvents: "none"
+      }
+    );
+    
+    // Append to body instead of the game container to prevent accidental removal
+    document.body.appendChild(counterContainer);
+  }
+  
+  // Get block counts
+  const totalBlocks = buildingBlocks.length;
+  const startBlocks = buildingBlocks.filter(b => b.userData?.type === 'start').length;
+  const finishBlocks = buildingBlocks.filter(b => b.userData?.type === 'finish').length;
+  
+  // Get maximum limit based on template size
+  let blockLimit;
+  switch(courseTemplate.toLowerCase()) {
+    case "small": blockLimit = BLOCK_LIMITS.SMALL; break;
+    case "large": blockLimit = BLOCK_LIMITS.LARGE; break;
+    case "medium":
+    default: blockLimit = BLOCK_LIMITS.MEDIUM;
+  }
+  
+  // Calculate percentage of limit used
+  const percentUsed = Math.min(100, Math.round((totalBlocks / blockLimit) * 100));
+  
+  // Determine progress bar color based on usage
+  let progressColor = "#4CAF50"; // Green
+  if (percentUsed > 90) progressColor = "#ff0000"; // Red
+  else if (percentUsed > 75) progressColor = "#ff9900"; // Orange
+  else if (percentUsed > 50) progressColor = "#ffff00"; // Yellow
+  
+  // Create the HTML
+  counterContainer.innerHTML = `
+    <div style="margin-bottom: 8px; text-align: center; font-weight: bold;">Block Counter</div>
+    <div style="margin-bottom: 5px;">
+      <span style="display: inline-block; width: 70%;">Total Blocks:</span>
+      <span style="font-weight: bold; color: ${percentUsed > 90 ? '#ff0000' : 'white'}">
+        ${totalBlocks} / ${blockLimit}
+      </span>
+    </div>
+    <div style="margin-bottom: 8px; height: 10px; background-color: #333; border-radius: 5px; overflow: hidden;">
+      <div style="height: 100%; width: ${percentUsed}%; background-color: ${progressColor};"></div>
+    </div>
+    <div style="margin-bottom: 3px;">
+      <span style="display: inline-block; width: 70%;">Start Blocks:</span>
+      <span style="${startBlocks === 1 ? 'color: #4CAF50;' : 'color: #ff9900;'} font-weight: bold;">
+        ${startBlocks} / 1
+      </span>
+    </div>
+    <div style="margin-bottom: 3px;">
+      <span style="display: inline-block; width: 70%;">Finish Blocks:</span>
+      <span style="${finishBlocks === 1 ? 'color: #4CAF50;' : 'color: #ff9900;'} font-weight: bold;">
+        ${finishBlocks} / 1
+      </span>
+    </div>
+  `;
+  
+  // Update the start/finish block button states in the UI
+  updateBlockTypeButtons(startBlocks, finishBlocks);
+}
+
+/**
+ * Updates block type buttons based on start/finish counts
+ */
+function updateBlockTypeButtons(startBlocks: number, finishBlocks: number): void {
+  const blockButtons = document.querySelectorAll('.block-button');
+  
+  blockButtons.forEach(button => {
+    const buttonEl = button as HTMLElement;
+    const type = buttonEl.getAttribute('data-block-type');
+    
+    if (type === 'start' && startBlocks >= 1) {
+      buttonEl.style.opacity = '0.5';
+      buttonEl.style.cursor = 'not-allowed';
+      buttonEl.setAttribute('disabled', 'true');
+    } else if (type === 'finish' && finishBlocks >= 1) {
+      buttonEl.style.opacity = '0.5';
+      buttonEl.style.cursor = 'not-allowed';
+      buttonEl.setAttribute('disabled', 'true');
+    } else {
+      buttonEl.style.opacity = '1';
+      buttonEl.style.cursor = 'pointer';
+      buttonEl.removeAttribute('disabled');
+    }
+  });
+}
+
+export { updateBlockCounter }; 

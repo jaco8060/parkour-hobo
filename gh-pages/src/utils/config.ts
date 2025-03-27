@@ -88,6 +88,13 @@ export const TEMPLATE_SIZES = {
   LARGE: 150
 };
 
+// Block limits by template size
+export const BLOCK_LIMITS = {
+  SMALL: 200,
+  MEDIUM: 400,
+  LARGE: 600
+};
+
 // Local storage keys
 export const STORAGE_KEYS = {
   BUILDER_STATE: 'builderState',

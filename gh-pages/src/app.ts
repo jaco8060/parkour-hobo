@@ -61,7 +61,8 @@ import {
   createCrosshair,
   updateCrosshair,
   highlightBlockForRemoval,
-  saveCurrentCourse
+  saveCurrentCourse,
+  updateBlockCounter
 } from "./systems/builder.js";
 import { 
   setupEventListeners, 
@@ -968,6 +969,15 @@ function enterBuilderMode(templateSize: string = "medium", courseData?: SavedCou
   
   // Show notification
   showNotification("Builder Mode Activated", 3000);
+  
+  // Initialize block counter
+  if (container) {
+    // Get the right template size
+    const actualTemplate = courseData ? courseData.template : templateSize;
+    import('./systems/builder.js').then(builderModule => {
+      builderModule.updateBlockCounter(buildingBlocks, actualTemplate, container);
+    });
+  }
 }
 
 /**
