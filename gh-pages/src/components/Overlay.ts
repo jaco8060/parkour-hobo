@@ -1,6 +1,8 @@
 // Overlay component handling game pauses and overlays
 import { createElement, removeElement } from "../../../src/utils/helpers.js";
 
+export { removeElement };
+
 let isOverlayActive = false;
 
 /**

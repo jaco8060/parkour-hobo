@@ -884,10 +884,7 @@ export function createBuilderUI(
   );
   saveButton.addEventListener("click", () => {
     import('../components/Overlay.js').then(overlayModule => {
-      // Reset all controls when opening the modal 
-      import('../systems/input.js').then(inputModule => {
-        inputModule.resetAllControls(keyState, buildControls);
-      });
+      // We don't need to reset controls here since the modal will do it
       
       // Show the modal with pixelated form styling but cleaner background
       overlayModule.showModal("Save Course", `
@@ -919,12 +916,8 @@ export function createBuilderUI(
               const courseName = input.value.trim();
               if (courseName) {
                 saveCurrentCourse(courseName, buildingBlocks, selectedBlockType);
-                // Close the modal after saving - using global reference
-                if ((window as any).__closeCurrentModal) {
-                  (window as any).__closeCurrentModal();
-                } else {
-                  overlayModule.removeElement("modal-overlay");
-                }
+                // Close the modal after saving
+                document.getElementById("modal-overlay")?.remove();
               } else {
                 overlayModule.showNotification("Please enter a course name", 3000);
               }
@@ -951,12 +944,8 @@ export function createBuilderUI(
             if (courseName) {
               saveCurrentCourse(courseName, buildingBlocks, selectedBlockType);
               
-              // Close the modal after saving - using global reference
-              if ((window as any).__closeCurrentModal) {
-                (window as any).__closeCurrentModal();
-              } else {
-                overlayModule.removeElement("modal-overlay");
-              }
+              // Close the modal after saving (direct DOM removal)
+              document.getElementById("modal-overlay")?.remove();
             } else {
               overlayModule.showNotification("Please enter a course name", 3000);
               
