@@ -10,7 +10,11 @@ export interface Block {
   position: Vector3;
   rotation: Vector3;
   type: string;
-  mesh?: THREE.Mesh; // Reference to the Three.js mesh
+  mesh?: THREE.Mesh | THREE.Group;
+  highlight(material: THREE.Material): void;
+  unhighlight(): void;
+  getMeshChildren?(): THREE.Object3D[];
+  originalMaterials?: THREE.Material[];
 }
 
 export interface Course {
@@ -32,5 +36,8 @@ export interface BlockDefinition {
   dimensions: Vector3;
   color: string;
   limit?: number;
-  previewColor?: string; // This is already correctly defined for placeholder previews
+  previewColor?: string;
+  createMesh: (position: Vector3, rotation: Vector3) => THREE.Mesh | THREE.Group;
+  createPlaceholder: () => THREE.Mesh | THREE.Group;
+  highlightPlaceholder: (mesh: THREE.Mesh | THREE.Group, isValid: boolean) => void;
 }

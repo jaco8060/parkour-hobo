@@ -30,7 +30,7 @@ class ParkourHoboCourseBuilder {
   private clock: THREE.Clock;
   
   // Add placeholder property
-  private placeholderMesh: THREE.Mesh | null = null;
+  private placeholderMesh: THREE.Mesh | THREE.Group | null = null;
   private canPlaceBlock: boolean = true;
 
   // Add these properties to the ParkourHoboCourseBuilder class
@@ -42,7 +42,6 @@ class ParkourHoboCourseBuilder {
 
   // Add these properties to the class
   private highlightedBlock: Block | null = null;
-  private originalMaterial: THREE.Material | THREE.Material[] | null = null;
   private deleteMaterial: THREE.MeshBasicMaterial;
 
   constructor() {
@@ -298,10 +297,9 @@ class ParkourHoboCourseBuilder {
       this.gridHelper.visible = true;
       
       // Reset any highlighted blocks
-      if (this.highlightedBlock && this.originalMaterial) {
-        this.highlightedBlock.mesh!.material = this.originalMaterial;
+      if (this.highlightedBlock) {
+        this.highlightedBlock.unhighlight();
         this.highlightedBlock = null;
-        this.originalMaterial = null;
       }
     } else {
       // Switch to player mode
@@ -389,9 +387,6 @@ class ParkourHoboCourseBuilder {
     // Update placeholder validity (limits might have changed)
     this.updatePlaceholderPosition();
   }
-
-  
-  
 
   private rotateBlock() {
     // Rotate in 90 degree increments
@@ -519,10 +514,12 @@ class ParkourHoboCourseBuilder {
     // Create new placeholder if a block type is selected
     if (this.selectedBlockType && this.isBuilderMode) {
       this.placeholderMesh = this.blockFactory.createPlaceholder(this.selectedBlockType);
-      this.scene.add(this.placeholderMesh);
-      
-      // Initial position update
-      this.updatePlaceholderPosition();
+      if (this.placeholderMesh) {
+        this.scene.add(this.placeholderMesh);
+        
+        // Initial position update
+        this.updatePlaceholderPosition();
+      }
     }
   }
   
@@ -534,8 +531,9 @@ class ParkourHoboCourseBuilder {
     const intersects = this.raycaster.intersectObjects(this.scene.children);
     
     for (const intersect of intersects) {
-      // Skip the placeholder itself
-      if (intersect.object === this.placeholderMesh) continue;
+      // Skip the placeholder itself and its children
+      if (intersect.object === this.placeholderMesh || 
+          (this.placeholderMesh instanceof THREE.Group && this.placeholderMesh.children.includes(intersect.object))) continue;
       
       // Calculate position (snap to grid)
       const position = new THREE.Vector3().copy(intersect.point);
@@ -556,17 +554,12 @@ class ParkourHoboCourseBuilder {
       // Check if placement is valid
       this.canPlaceBlock = this.isValidPlacement(position);
       
-      // Visual indicator for valid/invalid placement
-      const material = this.placeholderMesh.material as THREE.MeshLambertMaterial;
-      
-      if (this.canPlaceBlock) {
-        material.opacity = 0.5;
-        // Reset to the original color if it was previously red
-        material.color.set(blockDef.previewColor || blockDef.color);
-      } else {
-        material.opacity = 0.7;
-        material.color.set('#FF0000'); // Red for invalid placement
-      }
+      // Use the factory to update the placeholder appearance
+      this.blockFactory.highlightPlaceholder(
+        this.selectedBlockType, 
+        this.placeholderMesh, 
+        this.canPlaceBlock
+      );
       
       // Set rotation of placeholder
       this.placeholderMesh.rotation.y = THREE.MathUtils.degToRad(this.rotationAngle);
@@ -621,35 +614,42 @@ class ParkourHoboCourseBuilder {
   }
 
   private highlightBlockForDeletion() {
-    // Reset previous highlighting
-    if (this.highlightedBlock && this.highlightedBlock.mesh && this.originalMaterial) {
-      this.highlightedBlock.mesh.material = this.originalMaterial;
+    // Reset previous highlighted block
+    if (this.highlightedBlock) {
+      this.highlightedBlock.unhighlight();
       this.highlightedBlock = null;
-      this.originalMaterial = null;
     }
     
     if (!this.currentCourse) return;
     
     // Cast a ray to find which block we're pointing at
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const intersects = this.raycaster.intersectObjects(this.scene.children);
+    const intersects = this.raycaster.intersectObjects(this.scene.children, true); // true for recursive (check children)
     
     for (const intersect of intersects) {
       // Skip grid, placeholders, etc.
       if (!(intersect.object instanceof THREE.Mesh) || 
           intersect.object === this.placeholderMesh || 
+          (this.placeholderMesh instanceof THREE.Group && this.placeholderMesh.children.includes(intersect.object)) ||
           intersect.object instanceof THREE.GridHelper) continue;
       
-      // Find the block that matches this mesh
-      const block = this.currentCourse.blocks.find(b => b.mesh === intersect.object);
+      // Find the block that matches this mesh or is parent of this mesh
+      let block = this.currentCourse.blocks.find(b => b.mesh === intersect.object);
+      
+      // If not found directly, check if it's a child of a group
+      if (!block) {
+        block = this.currentCourse.blocks.find(b => 
+          b.mesh instanceof THREE.Group && 
+          b.mesh.children.some(child => child === intersect.object)
+        );
+      }
       
       if (block) {
-        // Store the highlighted block and its original material
+        // Store the highlighted block
         this.highlightedBlock = block;
-        this.originalMaterial = block.mesh!.material;
         
-        // Apply the red highlight material
-        block.mesh!.material = this.deleteMaterial;
+        // Highlight the block using its built-in method
+        block.highlight(this.deleteMaterial);
         break;
       }
     }
@@ -666,7 +666,9 @@ class ParkourHoboCourseBuilder {
       const block = this.currentCourse.blocks[blockIndex];
       
       // Remove from scene
-      this.scene.remove(block.mesh!);
+      if (block.mesh) {
+        this.scene.remove(block.mesh);
+      }
       
       // Remove from blocks array
       this.currentCourse.blocks.splice(blockIndex, 1);
@@ -680,7 +682,6 @@ class ParkourHoboCourseBuilder {
       
       // Clear the highlighted block
       this.highlightedBlock = null;
-      this.originalMaterial = null;
       
       // Update block counter
       this.updateBlockCounter();
@@ -703,10 +704,9 @@ class ParkourHoboCourseBuilder {
     }
     
     // Reset any highlighted blocks if switching away from delete tool
-    if (tool !== 'delete' && this.highlightedBlock && this.originalMaterial) {
-      this.highlightedBlock.mesh!.material = this.originalMaterial;
+    if (tool !== 'delete' && this.highlightedBlock) {
+      this.highlightedBlock.unhighlight();
       this.highlightedBlock = null;
-      this.originalMaterial = null;
     }
   }
 }

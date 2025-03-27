@@ -562,3 +562,19 @@ body, html {
     font-size: 8px;
   }
 }
+
+/* Add this after the .block-btn.active styles */
+
+.block-btn[data-block="bridge"] {
+  background-color: #8B4513;
+  border-color: #A0522D;
+}
+
+.block-btn[data-block="bridge"]:hover {
+  background-color: #A0522D;
+}
+
+.block-btn[data-block="bridge"].active {
+  background-color: #CD853F;
+  box-shadow: 0 0 10px #CD853F;
+}
