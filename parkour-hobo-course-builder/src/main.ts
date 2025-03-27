@@ -37,6 +37,9 @@ class ParkourHoboCourseBuilder {
   private currentTool: string = 'build';
   private rotationAngle: number = 0;
 
+  // Add this property to the class
+  private gridHelper: THREE.GridHelper;
+
   constructor() {
     // Initialize components
     this.blockFactory = new BlockFactory();
@@ -78,8 +81,8 @@ class ParkourHoboCourseBuilder {
     this.scene.add(directionalLight);
     
     // Add grid helper
-    const gridHelper = new THREE.GridHelper(50, 50);
-    this.scene.add(gridHelper);
+    this.gridHelper = new THREE.GridHelper(50, 50);
+    this.scene.add(this.gridHelper);
     
     // Set up UI callbacks
     this.setupUICallbacks();
@@ -255,6 +258,9 @@ class ParkourHoboCourseBuilder {
       if (this.selectedBlockType) {
         this.updatePlaceholder();
       }
+      
+      // Show grid in builder mode
+      this.gridHelper.visible = true;
     } else {
       // Switch to player mode
       this.ui.showPlayerMode();
@@ -275,6 +281,9 @@ class ParkourHoboCourseBuilder {
         this.scene.remove(this.placeholderMesh);
         this.placeholderMesh = null;
       }
+      
+      // Hide grid in player mode
+      this.gridHelper.visible = false;
     }
   }
 
