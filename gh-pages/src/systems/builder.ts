@@ -702,57 +702,120 @@ export function createBuilderUI(
   );
   builderUI.appendChild(title);
   
-  // Block type selection
+  // Block type selection section
   const blockTypeLabel = createElement("div", 
     {},
-    { fontWeight: "bold" },
+    { fontWeight: "bold", marginBottom: "5px" },
     "Block Type:"
   );
   builderUI.appendChild(blockTypeLabel);
   
-  const blockTypeSelector = createElement("div", 
+  // Add search bar
+  const searchContainer = createElement("div",
     {},
     {
+      marginBottom: "10px",
       display: "flex",
-      gap: "5px",
-      marginBottom: "10px"
+      width: "100%"
     }
   );
   
+  const searchInput = createElement("input",
+    { type: "text", placeholder: "Search blocks...", id: "block-search" },
+    {
+      padding: "5px",
+      width: "100%",
+      backgroundColor: "#333",
+      color: "white",
+      border: "1px solid #555",
+      borderRadius: "4px"
+    }
+  ) as HTMLInputElement;
+  
+  // Prevent propagation on input field interactions to fix focus issues
+  searchInput.addEventListener("mousedown", (e) => {
+    e.stopPropagation();
+  });
+
+  searchInput.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
+
+  searchInput.addEventListener("focus", (e) => {
+    e.stopPropagation();
+  });
+
+  // Also prevent propagation on keydown/keyup to avoid interference with game controls
+  searchInput.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+  });
+
+  searchInput.addEventListener("keyup", (e) => {
+    e.stopPropagation();
+  });
+
+  searchContainer.appendChild(searchInput);
+  builderUI.appendChild(searchContainer);
+  
+  // Create scrollable block type container
+  const blockTypeScrollContainer = createElement("div",
+    { id: "block-type-container" },
+    {
+      maxHeight: "200px",
+      overflowY: "auto",
+      overflowX: "hidden",
+      marginBottom: "15px",
+      padding: "5px",
+      backgroundColor: "rgba(0, 0, 0, 0.3)",
+      borderRadius: "4px",
+      border: "1px solid #555"
+    }
+  );
+  
+  // Define all available block types
+  const blockTypes = [
+    { id: "platform", name: "Platform", color: "#cccccc" },
+    { id: "floor", name: "Floor", color: "#dddddd" },
+    { id: "start", name: "Start", color: "#00ff00" },
+    { id: "finish", name: "Finish", color: "#0000ff" }
+    // Add more block types here as needed
+  ];
+  
   // Create button factory
   const createBlockButton = (text: string, type: string, color: string) => {
-    const colorIndicator = createElement("div", 
-      {},
-      {
-        width: "10px",
-        height: "10px",
-        backgroundColor: color,
-        display: "inline-block",
-        marginRight: "5px",
-        borderRadius: "2px"
-      }
-    );
-    
-    const button = createElement("button", 
-      { class: "block-button" },
+    const button = createElement("div", 
+      { class: "block-button", 'data-block-type': type },
       {
         padding: "8px",
-        backgroundColor: type === selectedBlockType ? "#4CAF50" : "#f1f1f1",
+        backgroundColor: type === selectedBlockType ? "#4CAF50" : "#222",
         border: "none",
         borderRadius: "4px",
         cursor: "pointer",
-        color: type === selectedBlockType ? "white" : "black",
-        flex: "1"
-      },
-      text
+        color: type === selectedBlockType ? "white" : "#eee",
+        marginBottom: "5px",
+        display: "flex",
+        alignItems: "center"
+      }
     );
     
-    button.prepend(colorIndicator);
+    const colorIndicator = createElement("div", 
+      {},
+      {
+        width: "15px",
+        height: "15px",
+        backgroundColor: color,
+        display: "inline-block",
+        marginRight: "10px",
+        borderRadius: "3px"
+      }
+    );
     
-    // Add the data-block-type attribute to identify the button type
-    button.setAttribute('data-block-type', type);
+    button.appendChild(colorIndicator);
+    button.appendChild(document.createTextNode(text));
     
-    button.addEventListener("click", () => {
+    button.addEventListener("click", (e) => {
+      e.stopPropagation(); // Prevent click from bubbling
+      
       // Don't allow selecting disabled buttons
       if (button.hasAttribute('disabled')) {
         return;
@@ -761,9 +824,9 @@ export function createBuilderUI(
       onBlockTypeChange(type);
       
       // Update button styles
-      Array.from(blockTypeSelector.children).forEach(child => {
-        (child as HTMLElement).style.backgroundColor = "#f1f1f1";
-        (child as HTMLElement).style.color = "black";
+      Array.from(blockTypeScrollContainer.children).forEach(child => {
+        (child as HTMLElement).style.backgroundColor = "#222";
+        (child as HTMLElement).style.color = "#eee";
       });
       button.style.backgroundColor = "#4CAF50";
       button.style.color = "white";
@@ -772,12 +835,30 @@ export function createBuilderUI(
     return button;
   };
   
-  blockTypeSelector.appendChild(createBlockButton("Platform", "platform", "#cccccc"));
-  blockTypeSelector.appendChild(createBlockButton("Floor", "floor", "#dddddd"));
-  blockTypeSelector.appendChild(createBlockButton("Start", "start", "#00ff00"));
-  blockTypeSelector.appendChild(createBlockButton("Finish", "finish", "#0000ff"));
+  // Add all block type buttons to scroll container
+  blockTypes.forEach(blockType => {
+    blockTypeScrollContainer.appendChild(
+      createBlockButton(blockType.name, blockType.id, blockType.color)
+    );
+  });
   
-  builderUI.appendChild(blockTypeSelector);
+  builderUI.appendChild(blockTypeScrollContainer);
+  
+  // Add search functionality
+  searchInput.addEventListener("input", () => {
+    const searchTerm = searchInput.value.toLowerCase();
+    Array.from(blockTypeScrollContainer.children).forEach(child => {
+      const button = child as HTMLElement;
+      const blockType = button.getAttribute('data-block-type');
+      const blockName = blockTypes.find(b => b.id === blockType)?.name.toLowerCase() || "";
+      
+      if (blockName.includes(searchTerm) || !searchTerm) {
+        button.style.display = "flex";
+      } else {
+        button.style.display = "none";
+      }
+    });
+  });
   
   // Create button group for all action buttons
   const buttonGroup = createElement("div",
@@ -845,7 +926,7 @@ export function createBuilderUI(
   gridSnapContainer.appendChild(gridSnapToggle);
   placementOptionsContainer.appendChild(gridSnapContainer);
   
-  // Grid size selector
+  // Grid size selector - FIX FOR DROPDOWN CLOSING TOO FAST
   const gridSizeContainer = createElement("div",
     {},
     {
@@ -865,21 +946,36 @@ export function createBuilderUI(
   const gridSizeSelect = createElement("select",
     { id: "grid-size-select" },
     { width: "80px" }
-  );
+  ) as HTMLSelectElement;
+  
+  // Stop propagation on all select interactions to fix dropdown closing issue
+  gridSizeSelect.addEventListener("mousedown", (e) => {
+    e.stopPropagation();
+  });
+  
+  gridSizeSelect.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
+  
+  gridSizeSelect.addEventListener("focus", (e) => {
+    e.stopPropagation();
+  });
   
   [0.25, 0.5, 1, 2].forEach(size => {
     const option = createElement("option", 
       { value: size.toString() },
       {},
       size.toString()
-    );
+    ) as HTMLOptionElement;
+    
     if (size === BUILDER_SETTINGS.PLACEMENT_SNAP_SIZE) {
-      option.setAttribute("selected", "selected");
+      option.selected = true;
     }
     gridSizeSelect.appendChild(option);
   });
   
   gridSizeSelect.addEventListener("change", (e) => {
+    e.stopPropagation(); // Stop propagation to prevent issues
     const value = parseFloat((e.target as HTMLSelectElement).value);
     BUILDER_SETTINGS.PLACEMENT_SNAP_SIZE = value;
     
@@ -904,11 +1000,12 @@ export function createBuilderUI(
     const value = parseFloat(savedGridSize);
     if (!isNaN(value)) {
       BUILDER_SETTINGS.PLACEMENT_SNAP_SIZE = value;
-      Array.from(gridSizeSelect.options).forEach(option => {
-        if (parseFloat(option.value) === value) {
-          option.selected = true;
+      for (let i = 0; i < gridSizeSelect.options.length; i++) {
+        if (parseFloat(gridSizeSelect.options[i].value) === value) {
+          gridSizeSelect.options[i].selected = true;
+          break;
         }
-      });
+      }
     }
   }
   
