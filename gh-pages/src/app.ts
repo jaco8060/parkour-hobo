@@ -54,7 +54,6 @@ import {
   updatePlacementPreview, 
   placeBlock, 
   removeBlock, 
-  saveCourse, 
   createBuilderUI, 
   createBuilderToolbar, 
   updateToolbarSelection, 

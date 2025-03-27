@@ -601,52 +601,6 @@ export function removeBlock(
 }
 
 /**
- * Save course data to send to parent
- */
-export function saveCourse(
-  buildingBlocks: THREE.Mesh[],
-  courseTemplate: string
-): void {
-  // Convert building blocks to serializable format
-  const blocks = buildingBlocks.map(block => ({
-    position: {
-      x: block.position.x,
-      y: block.position.y,
-      z: block.position.z
-    },
-    type: block.userData.type,
-    size: block.geometry.type.includes("Box") ? 
-      (block.geometry as THREE.BoxGeometry).parameters : 
-      { width: 3, height: 1, depth: 3 }
-  }));
-  
-  // Find start and finish positions
-  const startBlock = buildingBlocks.find(block => block.userData.type === "start");
-  const finishBlock = buildingBlocks.find(block => block.userData.type === "finish");
-  
-  if (!startBlock || !finishBlock) {
-    console.error("Course must have start and finish blocks");
-    return;
-  }
-  
-  const courseData = {
-    template: courseTemplate,
-    blocks,
-    startPosition: {
-      x: startBlock.position.x,
-      y: startBlock.position.y + 1, // Player spawns above the start block
-      z: startBlock.position.z
-    },
-    finishPosition: {
-      x: finishBlock.position.x,
-      y: finishBlock.position.y,
-      z: finishBlock.position.z
-    }
-  };
-  
-}
-
-/**
  * Creates the builder UI elements
  */
 export function createBuilderUI(
