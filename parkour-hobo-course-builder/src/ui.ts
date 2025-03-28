@@ -18,6 +18,7 @@ export class UI {
   private selectedBlockTooltip: HTMLElement | null = null;
   private controlsModal: HTMLElement | null = null;
   private errorModal: HTMLElement | null = null;
+  private successModal: HTMLElement | null = null;
   private playerControls: HTMLElement;
   
   private courseManager: CourseManager;
@@ -320,6 +321,68 @@ export class UI {
   // Public method to allow external access to show toast messages
   public displayToast(message: string, duration: number = 3000) {
     this.showToast(message, duration);
+  }
+
+  // Add a method to show a success message for level completion
+  public showSuccessMessage(message: string, duration: number = 4000) {
+    // Use the toast for simpler messages
+    if (message.length < 50) {
+      this.showToast(message, duration);
+      return;
+    }
+    
+    // For longer messages, create a full-screen success overlay
+    if (!this.successModal) {
+      this.createSuccessModal();
+    }
+    
+    const successMessage = this.successModal?.querySelector('.success-message') as HTMLElement;
+    if (successMessage) {
+      successMessage.innerHTML = message;
+    }
+    
+    this.successModal?.classList.remove('hidden');
+    
+    // Auto-hide after duration
+    setTimeout(() => {
+      this.successModal?.classList.add('hidden');
+    }, duration);
+  }
+  
+  // Create a success modal for level completion
+  private createSuccessModal() {
+    this.successModal = document.createElement('div');
+    this.successModal.classList.add('success-overlay');
+    this.successModal.classList.add('hidden');
+    this.successModal.style.position = 'fixed';
+    this.successModal.style.top = '0';
+    this.successModal.style.left = '0';
+    this.successModal.style.width = '100%';
+    this.successModal.style.height = '100%';
+    this.successModal.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    this.successModal.style.display = 'flex';
+    this.successModal.style.justifyContent = 'center';
+    this.successModal.style.alignItems = 'center';
+    this.successModal.style.zIndex = '2000';
+    
+    const messageContainer = document.createElement('div');
+    messageContainer.style.backgroundColor = '#4CAF50';
+    messageContainer.style.color = 'white';
+    messageContainer.style.padding = '30px';
+    messageContainer.style.borderRadius = '10px';
+    messageContainer.style.maxWidth = '80%';
+    messageContainer.style.textAlign = 'center';
+    messageContainer.style.boxShadow = '0 0 20px rgba(76, 175, 80, 0.5)';
+    
+    const successMessage = document.createElement('h2');
+    successMessage.classList.add('success-message');
+    successMessage.style.fontFamily = 'Press Start 2P, monospace';
+    successMessage.style.fontSize = '24px';
+    successMessage.style.marginBottom = '20px';
+    
+    messageContainer.appendChild(successMessage);
+    this.successModal.appendChild(messageContainer);
+    document.body.appendChild(this.successModal);
   }
 
   setOnNewCourse(callback: (templateName: string) => void) {

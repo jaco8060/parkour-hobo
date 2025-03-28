@@ -49,6 +49,8 @@ export class Player {
   // Box for collision
   private collisionBox: THREE.Box3;
   private collisionOffsetY: number = 0.75; // Offset from center for the collision box
+  private onLevelComplete: (() => void) | null = null;
+  private isLevelCompleted: boolean = false;
 
   constructor(position: Vector3, camera: THREE.PerspectiveCamera) {
     this.mesh = new THREE.Group();
@@ -304,8 +306,19 @@ export class Player {
       // Create a box3 for the block
       const blockBox = new THREE.Box3().setFromObject(block.mesh);
       
+      // Check for finish block - complete the level when player touches it
+      if (block.type === 'finish') {
+        if (this.collisionBox.intersectsBox(blockBox) && !this.isLevelCompleted) {
+          this.isLevelCompleted = true;
+          if (this.onLevelComplete) {
+            this.onLevelComplete();
+          }
+        }
+        // Continue with collision checks even if it's a finish block
+      }
+      
       // Check for kill zone - only check collision with the base platform (first child)
-      if (block.type === 'killZone') {
+      if (block.type === 'killZone' || block.type === 'killZoneLarge') {
         let killZoneBox;
         
         if (block.mesh instanceof THREE.Group && block.mesh.children.length > 0) {
@@ -709,6 +722,16 @@ export class Player {
     this.onDeath = callback;
   }
   
+  // Set level complete callback
+  setOnLevelComplete(callback: () => void) {
+    this.onLevelComplete = callback;
+  }
+  
+  // Reset level completion state
+  resetLevelCompletion() {
+    this.isLevelCompleted = false;
+  }
+  
   // Clean up event listeners on destroy
   destroy() {
     window.removeEventListener('keydown', this.keydownHandler);
@@ -718,6 +741,10 @@ export class Player {
     if (this.deathTimeout !== null) {
       window.clearTimeout(this.deathTimeout);
     }
+    
+    // Reset any callbacks
+    this.onDeath = null;
+    this.onLevelComplete = null;
   }
   
   private keydownHandler = (event: KeyboardEvent) => {

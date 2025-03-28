@@ -622,4 +622,41 @@ body, html {
   transform: scale(0.95);
 }
 
+/* Success overlay for level completion */
+.success-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+.success-overlay.hidden {
+  display: none;
+}
+
+.success-message {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 24px;
+  color: white;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+  animation: bounce 1s infinite alternate;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes bounce {
+  from { transform: scale(1); }
+  to { transform: scale(1.05); }
+}
+
 

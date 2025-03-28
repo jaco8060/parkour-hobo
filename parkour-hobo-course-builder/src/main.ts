@@ -502,6 +502,20 @@ class ParkourHoboCourseBuilder {
       this.ui.displayToast('You died! Returning to start point...', 2000);
     });
     
+    // Set level completion callback
+    this.player.setOnLevelComplete(() => {
+      // Show success message with the more prominent UI
+      this.ui.showSuccessMessage('CONGRATULATIONS!<br><br>You successfully parkoured,<br>now get out of here!', 5000);
+      
+      // Optional: Add a small delay before returning to builder mode
+      setTimeout(() => {
+        if (!this.isBuilderMode) {
+          this.toggleMode(); // Switch back to builder mode
+          this.ui.selectTool(this.currentTool); // Go back to previous build tool
+        }
+      }, 6000);
+    });
+    
     // Update UI with player controls
     this.ui.updateControlsDisplay(this.player.getControls());
   }
