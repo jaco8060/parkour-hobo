@@ -40,6 +40,12 @@ export class Player {
   private fallSpeed: number = 0;
   private terminalVelocity: number = 20;
   
+  // Kill zone properties
+  private respawnPosition: Vector3;
+  private isDead: boolean = false;
+  private deathTimeout: number | null = null;
+  private onDeath: (() => void) | null = null;
+  
   // Box for collision
   private collisionBox: THREE.Box3;
   private collisionOffsetY: number = 0.75; // Offset from center for the collision box
@@ -47,6 +53,9 @@ export class Player {
   constructor(position: Vector3, camera: THREE.PerspectiveCamera) {
     this.mesh = new THREE.Group();
     this.camera = camera;
+    
+    // Store initial position as respawn point
+    this.respawnPosition = {...position};
     
     // Body
     const bodyGeometry = new THREE.BoxGeometry(0.5, 0.7, 0.3);
@@ -110,6 +119,9 @@ export class Player {
   }
 
   update(delta: number, time: number, blocks: Block[]) {
+    // Don't update if player is dead
+    if (this.isDead) return;
+    
     // Store blocks for collision detection
     this.collisionBlocks = blocks;
     
@@ -130,6 +142,12 @@ export class Player {
     
     // Update camera position to follow player
     this.updateCamera();
+    
+    // Check if player fell out of the world (y < -10)
+    if (this.mesh.position.y < -10) {
+      this.respawn();
+      return;
+    }
     
     // Idle animation only when grounded and not moving
     if (!this.isMoving && this.isGrounded) {
@@ -210,6 +228,24 @@ export class Player {
       
       // Create a box3 for the block
       const blockBox = new THREE.Box3().setFromObject(block.mesh);
+      
+      // Check for kill zone - only check collision with the base platform (first child)
+      if (block.type === 'killZone') {
+        let killZoneBox;
+        
+        if (block.mesh instanceof THREE.Group && block.mesh.children.length > 0) {
+          // Only check collision with the base platform, not the warning triangles
+          killZoneBox = new THREE.Box3().setFromObject(block.mesh.children[0]);
+        } else {
+          killZoneBox = blockBox;
+        }
+        
+        if (this.collisionBox.intersectsBox(killZoneBox)) {
+          this.die();
+          return;
+        }
+        continue; // Skip further collision checks for kill zones
+      }
       
       // Check if player's collision box intersects with block
       if (this.collisionBox.intersectsBox(blockBox)) {
@@ -468,6 +504,9 @@ export class Player {
     
     // Update collision box
     this.updateCollisionBox();
+    
+    // Update respawn position
+    this.respawnPosition = {...position};
   }
   
   // Control management methods
@@ -509,10 +548,86 @@ export class Player {
     this.saveControls();
   }
   
+  // Kill zone methods
+  private die() {
+    if (this.isDead) return;
+    
+    this.isDead = true;
+    
+    // Call the death callback if it exists
+    if (this.onDeath) {
+      this.onDeath();
+    }
+    
+    // Flash the player red
+    const originalBodyColor = (this.body.material as THREE.MeshBasicMaterial).color.clone();
+    const originalHeadColor = (this.head.material as THREE.MeshBasicMaterial).color.clone();
+    const originalArmColor = (this.leftArm.material as THREE.MeshBasicMaterial).color.clone();
+    
+    // Make all body parts red
+    (this.body.material as THREE.MeshBasicMaterial).color.set(0xff0000);
+    (this.head.material as THREE.MeshBasicMaterial).color.set(0xff0000);
+    (this.leftArm.material as THREE.MeshBasicMaterial).color.set(0xff0000);
+    (this.rightArm.material as THREE.MeshBasicMaterial).color.set(0xff0000);
+    
+    // Wait a moment, then respawn
+    this.deathTimeout = window.setTimeout(() => {
+      // Restore original colors
+      (this.body.material as THREE.MeshBasicMaterial).color.copy(originalBodyColor);
+      (this.head.material as THREE.MeshBasicMaterial).color.copy(originalHeadColor);
+      (this.leftArm.material as THREE.MeshBasicMaterial).color.copy(originalArmColor);
+      (this.rightArm.material as THREE.MeshBasicMaterial).color.copy(originalArmColor);
+      
+      this.respawn();
+    }, 500);
+  }
+  
+  private respawn() {
+    // Reset isDead flag
+    this.isDead = false;
+    
+    // Reset position to respawn point
+    this.mesh.position.set(
+      this.respawnPosition.x,
+      this.respawnPosition.y,
+      this.respawnPosition.z
+    );
+    
+    // Reset physics
+    this.verticalVelocity = 0;
+    this.isGrounded = false;
+    
+    // Reset rotation to make player face forward
+    this.rotationAngle = 0;
+    this.mesh.rotation.y = 0;
+    this.playerDirection.set(0, 0, -1);
+    
+    // Update camera
+    this.updateCamera();
+    
+    // Update collision box
+    this.updateCollisionBox();
+  }
+  
+  // Update the respawn position (called when player passes checkpoints, etc.)
+  updateRespawnPosition(position: Vector3) {
+    this.respawnPosition = {...position};
+  }
+  
+  // Set death callback
+  setOnDeath(callback: () => void) {
+    this.onDeath = callback;
+  }
+  
   // Clean up event listeners on destroy
   destroy() {
     window.removeEventListener('keydown', this.keydownHandler);
     window.removeEventListener('keyup', this.keyupHandler);
+    
+    // Clear any pending timeouts
+    if (this.deathTimeout !== null) {
+      window.clearTimeout(this.deathTimeout);
+    }
   }
   
   private keydownHandler = (event: KeyboardEvent) => {

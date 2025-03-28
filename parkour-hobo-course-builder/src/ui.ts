@@ -205,7 +205,7 @@ export class UI {
       if (tool === 'select') {
         this.showToast('Select Mode: Click to select a block<br>R: Rotate selected block<br>Delete: Remove selected block<br>Esc: Cancel selection');
       } else if (tool === 'build') {
-        this.showToast('Build Mode: Click to place block<br>R: Rotate before placing<br>Q/E: Lower/Raise block placement height');
+        this.showToast('Build Mode: Click to place block<br>R: Rotate before placing<br>Q/E: Lower/Raise block placement height<br>Red Kill Zones will reset player position in player mode');
       } else if (tool === 'delete') {
         this.showToast('Delete Mode: Click to delete block');
       } else if (tool === 'player') {

@@ -473,6 +473,11 @@ class ParkourHoboCourseBuilder {
     this.player = new Player(position, this.camera);
     this.scene.add(this.player.mesh);
     
+    // Set death callback to show a toast message
+    this.player.setOnDeath(() => {
+      this.ui.displayToast('You died! Returning to start point...', 2000);
+    });
+    
     // Update UI with player controls
     this.ui.updateControlsDisplay(this.player.getControls());
   }
@@ -596,6 +601,11 @@ class ParkourHoboCourseBuilder {
       this.updatePlaceholderPosition();
     }
     
+    // Animate kill zones in builder mode
+    if (this.isBuilderMode && this.currentCourse) {
+      this.animateKillZones(time);
+    }
+    
     // Update player if in player mode
     if (!this.isBuilderMode && this.player) {
       // Pass blocks for collision detection 
@@ -605,6 +615,52 @@ class ParkourHoboCourseBuilder {
     
     // Render
     this.renderer.render(this.scene, this.camera);
+  }
+
+  // Animate kill zones to make them more visible
+  private animateKillZones(time: number) {
+    if (!this.currentCourse) return;
+    
+    for (const block of this.currentCourse.blocks) {
+      if (block.type === 'killZone' && block.mesh) {
+        // Pulse the opacity between 0.3 and 0.7
+        const opacity = 0.3 + (Math.sin(time * 3) + 1) * 0.2;
+        
+        if (block.mesh instanceof THREE.Mesh) {
+          const material = block.mesh.material as THREE.MeshLambertMaterial;
+          if (material.transparent) {
+            material.opacity = opacity;
+          }
+        } else if (block.mesh instanceof THREE.Group) {
+          // Handle the base mesh opacity
+          if (block.mesh.children.length > 0) {
+            const baseMesh = block.mesh.children[0];
+            if (baseMesh instanceof THREE.Mesh) {
+              const material = baseMesh.material as THREE.MeshLambertMaterial;
+              if (material.transparent) {
+                material.opacity = opacity;
+              }
+            }
+          }
+          
+          // Animate the warning triangles
+          for (let i = 1; i < block.mesh.children.length; i++) {
+            const triangle = block.mesh.children[i];
+            if (triangle instanceof THREE.Mesh) {
+              // Get the original Y position and random phase stored during creation
+              const originalY = (triangle as any).originalY || 0.3;
+              const randomPhase = (triangle as any).randomPhase || 0;
+              
+              // Float up and down with a slight random phase difference
+              triangle.position.y = originalY + Math.sin(time * 2 + randomPhase) * 0.1;
+              
+              // Rotate slowly 
+              triangle.rotation.y = time * 0.5 + randomPhase;
+            }
+          }
+        }
+      }
+    }
   }
 
   private updatePlaceholder() {
