@@ -168,6 +168,20 @@ class ParkourHoboCourseBuilder {
     
     this.ui.setOnExportCourse(() => {
       if (this.currentCourse) {
+        // Validate course before exporting
+        const validation = this.courseManager.validateCourse(this.currentCourse);
+        if (!validation.valid) {
+          this.ui.showErrorModal(validation.message);
+          return;
+        }
+        
+        const courseName = this.ui.getCourseName();
+        if (courseName.trim() === '') {
+          this.ui.showErrorModal('Please enter a course name');
+          return;
+        }
+        
+        this.currentCourse.name = courseName;
         const jsonCode = this.courseManager.exportCourseAsJson(this.currentCourse);
         this.ui.showExportModal(jsonCode);
       }

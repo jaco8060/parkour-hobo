@@ -154,6 +154,34 @@ export class CourseManager {
     return JSON.stringify(exportData, null, 2);
   }
   
+  // Add validation method to check if a course has exactly one start and one finish block
+  public validateCourse(course: Course): { valid: boolean; message: string } {
+    if (!course || !course.blocks) {
+      return { valid: false, message: 'Invalid course data' };
+    }
+    
+    const startBlocks = course.blocks.filter(block => block.type === 'start');
+    const finishBlocks = course.blocks.filter(block => block.type === 'finish');
+    
+    if (startBlocks.length === 0) {
+      return { valid: false, message: 'Course must have a Start block' };
+    }
+    
+    if (startBlocks.length > 1) {
+      return { valid: false, message: 'Course must have exactly one Start block' };
+    }
+    
+    if (finishBlocks.length === 0) {
+      return { valid: false, message: 'Course must have a Finish block' };
+    }
+    
+    if (finishBlocks.length > 1) {
+      return { valid: false, message: 'Course must have exactly one Finish block' };
+    }
+    
+    return { valid: true, message: 'Course is valid' };
+  }
+  
   public importCourseFromJson(jsonData: string): Course {
     try {
       const courseData = JSON.parse(jsonData);

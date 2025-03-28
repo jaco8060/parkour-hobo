@@ -17,6 +17,7 @@ export class UI {
   private toast: HTMLElement | null = null;
   private selectedBlockTooltip: HTMLElement | null = null;
   private controlsModal: HTMLElement | null = null;
+  private errorModal: HTMLElement | null = null;
   private playerControls: HTMLElement;
   
   private courseManager: CourseManager;
@@ -391,13 +392,58 @@ export class UI {
     return this.courseNameInput.value.trim();
   }
 
-  showExportModal(jsonCode: string) {
+  public showExportModal(jsonCode: string) {
     this.exportCode.value = jsonCode;
     this.exportModal.classList.remove('hidden');
   }
 
-  hideExportModal() {
+  public hideExportModal() {
     this.exportModal.classList.add('hidden');
+  }
+
+  // Add method to show an error modal
+  public showErrorModal(message: string) {
+    if (!this.errorModal) {
+      this.createErrorModal();
+    }
+    
+    const errorMessage = this.errorModal?.querySelector('.error-message') as HTMLElement;
+    if (errorMessage) {
+      errorMessage.textContent = message;
+    }
+    
+    this.errorModal?.classList.remove('hidden');
+  }
+  
+  // Add method to create an error modal
+  private createErrorModal() {
+    this.errorModal = document.createElement('div');
+    this.errorModal.classList.add('modal');
+    
+    const modalContent = document.createElement('div');
+    modalContent.classList.add('modal-content');
+    modalContent.classList.add('error-modal');
+    
+    const modalTitle = document.createElement('h2');
+    modalTitle.textContent = 'Error';
+    
+    const errorMessage = document.createElement('p');
+    errorMessage.classList.add('error-message');
+    errorMessage.style.color = 'white';
+    errorMessage.style.marginBottom = '20px';
+    
+    const closeButton = document.createElement('button');
+    closeButton.textContent = 'OK';
+    closeButton.addEventListener('click', () => {
+      this.errorModal?.classList.add('hidden');
+    });
+    
+    modalContent.appendChild(modalTitle);
+    modalContent.appendChild(errorMessage);
+    modalContent.appendChild(closeButton);
+    
+    this.errorModal.appendChild(modalContent);
+    document.body.appendChild(this.errorModal);
   }
 
   private updateSavedCoursesList() {

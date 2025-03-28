@@ -230,6 +230,33 @@ body, html {
   max-width: 600px;
 }
 
+/* Add error modal styling */
+.error-modal {
+  border-color: #f44336 !important;
+  max-width: 400px;
+}
+
+.error-modal h2 {
+  color: #f44336;
+  margin-bottom: 15px;
+}
+
+.error-modal button {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 14px;
+  cursor: pointer;
+  display: block;
+  margin: 0 auto;
+}
+
+.error-modal button:hover {
+  background-color: #d32f2f;
+}
+
 .modal h2 {
   color: white;
   font-size: 24px;
