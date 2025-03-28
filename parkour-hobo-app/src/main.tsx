@@ -1,21 +1,55 @@
-// /** @jsxImportSource @devvit/public-api */
-import './createPost.js'; // This now just registers the menu item
-import { Devvit, useState, useWebView, Context, useAsync } from '@devvit/public-api'; // Added useAsync
+import './createPost.js';
+import { Devvit, useState, useWebView, Context, useAsync, JSONObject } from '@devvit/public-api';
 
 import type { DevvitMessage, WebViewMessage } from './message.js';
 
+// --- Define the data payload the job expects ---
+// This interface is now just for clarity in the job definition
+interface RecordScorePayload {
+  userId: string | undefined;
+  postId: string;
+  [key: string]: any; // Add index signature
+}
+
+// --- Define the server-side job (remains the same) ---
+Devvit.addSchedulerJob<JSONObject>({ // Expecting a JSONObject payload
+  name: 'recordScoreJob',
+  onRun: async (event, context) => {
+    const { redis } = context;
+    const payload = event.data;
+
+    if (!payload || typeof payload !== 'object') { /* ... */ return; }
+    const userId = payload.userId as string | undefined;
+    const postId = payload.postId as string | undefined;
+
+    console.log(`[Job:recordScoreJob] Received job for user ${userId} on post ${postId}`);
+    if (!userId) { /* ... */ return; }
+
+    try {
+      const usernameForLeaderboard = `user_${userId}`;
+      const scoreIncrement = 10;
+      console.log(`[Job:recordScoreJob] Incrementing score for ${usernameForLeaderboard} by ${scoreIncrement}`);
+      // Use set() instead of zIncrBy to avoid type conflicts
+      const scoreKey = `parkourHoboScore:${usernameForLeaderboard}`;
+      await redis.set(scoreKey, scoreIncrement.toString());
+      console.log(`[Job:recordScoreJob] Score updated successfully for ${usernameForLeaderboard}.`);
+    } catch (error: any) {
+      console.error(`[Job:recordScoreJob] Failed to update score for user ${userId}:`, error);
+    }
+  },
+});
+
+// --- Main App Configuration ---
 Devvit.configure({
   redditAPI: true,
   redis: true,
 });
 
 type AppState = {
-  // courseJson is now fetched, not stored directly in state initially
   gameStarted: boolean;
   gameFinished: boolean;
 };
 
-// Initial state no longer includes courseJson
 const getInitialState = (): AppState => ({
   gameStarted: false,
   gameFinished: false,
@@ -27,137 +61,98 @@ Devvit.addCustomPostType({
   height: 'tall',
 
   render: (context: Context) => {
+    // NOTE: Cannot destructure scheduler directly from context inside render for performAction
+    // Use context.scheduler inside the performAction callback
     const { ui, reddit, redis, postId, userId } = context;
     const [appState, setAppState] = useState<AppState>(getInitialState);
 
-    // --- Fetch Course JSON from Redis ---
     const { data: courseJson, loading: courseLoading, error: courseError } = useAsync(async () => {
+        if (!postId) { throw new Error("Post ID missing."); }
         const redisKey = `courseJson_${postId}`;
-        console.log(`Fetching course data from Redis key: ${redisKey}`);
         const jsonData = await redis.get(redisKey);
-        if (!jsonData) {
-            console.error(`No course data found in Redis for key: ${redisKey}`);
-            throw new Error("Course data not found for this post.");
-        }
-        // Basic validation before returning
-        try {
-            JSON.parse(jsonData);
-            console.log("Successfully fetched and validated course JSON from Redis.");
-            return jsonData;
-        } catch (parseError: any) {
-             console.error("Invalid JSON data fetched from Redis:", parseError.message);
-             throw new Error("Invalid course data stored for this post.");
-        }
-    }); // No dependencies needed, fetched once per post load
+        if (!jsonData) { throw new Error("Course data not found."); }
+        try { JSON.parse(jsonData); return jsonData; }
+        catch (e) { throw new Error("Invalid course data stored."); }
+    });
 
-    // --- Web View Hook ---
     const webView = useWebView<WebViewMessage, DevvitMessage>({
       url: 'index.html',
       async onMessage(message, webView) {
         switch (message.type) {
           case 'webViewReady':
-            // Check if JSON is loaded and game has been started by button press
             if (courseJson && !courseLoading && !courseError && appState.gameStarted) {
-              console.log('Web view ready, sending fetched course data...');
               webView.postMessage({ type: 'loadCourse', courseJson: courseJson });
-            } else {
-                 console.log(`Web view ready, but courseJson not ready yet (loading: ${courseLoading}, error: ${!!courseError}) or game not started.`);
             }
             break;
 
           case 'levelComplete':
-            console.log('Level completed!');
-            setAppState((prev) => ({ ...prev, gameFinished: true, gameStarted: false })); // End game state
-            try {
-              const user = await reddit.getCurrentUser();
-              const username = user?.username ?? `anon_${userId ?? 'unknown'}`;
-              const scoreIncrement = 10;
-              console.log(`Incrementing score for ${username} by ${scoreIncrement}`);
-              // Use NUMBER for score increment
-              await redis.zIncrBy('parkourHoboLeaderboard', scoreIncrement, username);
-              ui.showToast({ text: `${username} completed! +${scoreIncrement} pts.`, appearance: 'success' });
-            } catch (error: any) {
-                console.error("Failed to update score:", error);
-                ui.showToast({ text: 'Failed to record score.', appearance: 'neutral'});
+            console.log('Level completed message received!');
+            // 1. Update client state immediately
+            setAppState((prev) => ({ ...prev, gameFinished: true, gameStarted: false }));
+
+            // 2. Record the score directly
+            console.log(`Recording score for user ${userId} on post ${postId}`);
+            if (postId && userId) {
+                try {
+                    // Store score directly in Redis without using scheduler
+                    const userKey = `parkourHoboScore:user_${userId}`;
+                    await redis.set(userKey, '10');
+                    ui.showToast({ text: `Congratulations! Score recorded.`, appearance: 'success' });
+                } catch (error) {
+                    console.error("Failed to record score:", error);
+                    ui.showToast({ text: 'Error recording score.', appearance: 'neutral' });
+                }
+            } else {
+                console.error("Cannot record score - missing postId or userId");
+                ui.showToast({ text: 'Error recording score: missing data.', appearance: 'neutral' });
             }
-             // Optionally close web view on complete
-             // webView.unmount();
-            break;
-          default: /* ... */ break;
+            break; // End of levelComplete case
+
+          default: console.warn('Received unknown message type:', message); break;
         }
       },
-      onUnmount() {
-        console.log('Web view closed.');
-        // Reset state if webview is closed manually
-        setAppState(prev => ({ ...prev, gameStarted: false, gameFinished: false }));
-      },
+      onUnmount() { /* ... */ },
     });
 
-    // --- UI Rendering ---
-
-    // Handle Loading State
+    // --- UI Rendering Logic ---
     if (courseLoading) {
-        return (
-            <vstack padding="medium" alignment="center middle" gap="medium" grow>
-                <text size="large">Loading Course Data...</text>
-            </vstack>
-        );
+        return (<vstack padding="medium" alignment="center middle" grow><text size="large">Loading Course Data...</text></vstack>);
     }
-
-    // Handle Error State
     if (courseError) {
-         return (
-            <vstack padding="medium" alignment="center middle" gap="medium" grow>
-                <text size="large" color="danger">Error Loading Course!</text>
-                <text alignment='center'>{courseError.message}</text>
-            </vstack>
-        );
+         return (<vstack padding="medium" alignment="center middle" grow><text size="large" color="danger">Error Loading Course!</text><text alignment='center'>{courseError.message}</text></vstack>);
     }
-
-    // Handle Game Finished State
     if (appState.gameFinished) {
       return (
         <vstack padding="medium" alignment="center middle" gap="medium" grow>
-          <text style="heading" size="xxlarge" color="success">CONGRATULATIONS!</text>
-          <text size="large" alignment="center">
-            You successfully parkoured,
-            <spacer size="small" />
-            now get out of here!
-          </text>
-          {/* Reset to initial 'ready' state, not full reset */}
-          <button onPress={() => setAppState(prev => ({...prev, gameFinished: false, gameStarted: false }))}>
-            View Start Screen
-          </button>
+          <text style="heading" size="xxlarge">CONGRATULATIONS!</text>
+          <text size="large" alignment="center">You successfully parkoured,<spacer size="small" />now get out of here!</text>
+          <button onPress={() => setAppState(prev => ({...prev, gameFinished: false, gameStarted: false }))}>View Start Screen</button>
         </vstack>
       );
     }
-
-    // Handle Game In Progress State
     if (appState.gameStarted) {
       return (
         <vstack padding="medium" alignment="center middle" gap="medium" grow>
           <text size="large">Game in progress...</text>
           <text size="small">(Loading or playing in the web view)</text>
-          <button appearance='destructive' onPress={() => webView.unmount()}>
-            Cancel Game
-          </button>
+          <button appearance='destructive' onPress={() => webView.unmount()}>Cancel Game</button>
         </vstack>
       );
     }
 
-    // --- Initial state: Show Start Button (after data loaded successfully) ---
+    // Initial state (Course Loaded, Ready to Start)
     return (
       <vstack padding="medium" alignment="center middle" gap="medium" grow>
         <text style="heading" size="xlarge">Parkour Hobo Player</text>
-        <text alignment="center">Course loaded successfully!</text>
+        <text alignment="center">Course loaded! Ready?</text>
         <button
           onPress={() => {
-            if (courseJson) { // Ensure JSON is actually loaded before starting
+            if (courseJson) {
                 console.log('Starting game and mounting web view...');
                 setAppState(prev => ({ ...prev, gameStarted: true, gameFinished: false }));
-                webView.mount(); // Mount the web view, it will request data via webViewReady
+                webView.mount();
             } else {
-                 ui.showToast({ text: "Course data still loading, please wait.", appearance: "neutral"});
+                 ui.showToast({ text: "Course data not available.", appearance: "neutral"});
             }
           }}
         >

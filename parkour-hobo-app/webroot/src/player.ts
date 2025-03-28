@@ -355,6 +355,15 @@ export class Player {
 
           // Check simple intersection first
           if (tentativeCollisionBox.intersectsBox(blockBox)) {
+            // Check if player's feet are slightly above the block's top - allow movement if they are
+            const playerFeetY = this.mesh.position.y - this.collisionOffsetY;
+            const blockTopY = blockBox.max.y;
+            const feetClearance = 0.05; // Small threshold to allow walking on surfaces
+            
+            // If player's feet are above the block's top with a small clearance, allow movement
+            if (playerFeetY >= blockTopY - feetClearance) {
+                continue; // Skip collision - player is on top of object
+            }
 
             // Check if the collision is primarily horizontal (and not just landing/hitting head)
             // A simple check: if vertical overlap is less than horizontal overlap

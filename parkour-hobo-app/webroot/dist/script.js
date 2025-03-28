@@ -18806,11 +18806,14 @@ class Cu {
       if (!s.mesh || s.type === "killZone" || s.type === "killZoneLarge" || s.type === "finish") continue;
       const a = new Wt().setFromObject(s.mesh);
       if (n.intersectsBox(a)) {
+        const o = this.mesh.position.y - this.collisionOffsetY, l = a.max.y;
+        if (o >= l - 0.05)
+          continue;
         Math.max(0, Math.min(n.max.y, a.max.y) - Math.max(n.min.y, a.min.y));
-        const o = Math.max(0, Math.min(n.max.x, a.max.x) - Math.max(n.min.x, a.min.x)), l = Math.max(0, Math.min(n.max.z, a.max.z) - Math.max(n.min.z, a.min.z));
-        if (o > 0.01 || l > 0.01) {
-          const c = n.getCenter(new F()).x < a.getCenter(new F()).x ? -(n.max.x - a.min.x) : a.max.x - n.min.x, u = n.getCenter(new F()).z < a.getCenter(new F()).z ? -(n.max.z - a.min.z) : a.max.z - n.min.z;
-          return Math.abs(c) < Math.abs(u) ? { collided: !0, positionX: this.mesh.position.x, positionZ: t } : { collided: !0, positionX: e, positionZ: this.mesh.position.z };
+        const u = Math.max(0, Math.min(n.max.x, a.max.x) - Math.max(n.min.x, a.min.x)), d = Math.max(0, Math.min(n.max.z, a.max.z) - Math.max(n.min.z, a.min.z));
+        if (u > 0.01 || d > 0.01) {
+          const f = n.getCenter(new F()).x < a.getCenter(new F()).x ? -(n.max.x - a.min.x) : a.max.x - n.min.x, m = n.getCenter(new F()).z < a.getCenter(new F()).z ? -(n.max.z - a.min.z) : a.max.z - n.min.z;
+          return Math.abs(f) < Math.abs(m) ? { collided: !0, positionX: this.mesh.position.x, positionZ: t } : { collided: !0, positionX: e, positionZ: this.mesh.position.z };
         }
       }
     }
