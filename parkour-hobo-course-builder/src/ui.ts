@@ -13,6 +13,8 @@ export class UI {
   private exportModal: HTMLElement;
   private exportCode: HTMLTextAreaElement;
   private toolbar: HTMLElement;
+  private toast: HTMLElement | null = null;
+  private selectedBlockTooltip: HTMLElement | null = null;
   
   private courseManager: CourseManager;
   private onNewCourse: ((templateName: string) => void) | undefined;
@@ -22,6 +24,7 @@ export class UI {
   private onSaveCourse: (() => void) | undefined;
   private onReset: (() => void) | undefined;
   private onToolSelected: ((tool: string) => void) | undefined;
+  private toastTimeout: number | null = null;
 
   constructor(courseManager: CourseManager) {
     this.courseManager = courseManager;
@@ -141,6 +144,43 @@ export class UI {
       });
     });
     
+    // Create toast element for showing controls
+    this.toast = document.createElement('div');
+    this.toast.classList.add('controls-toast');
+    this.toast.style.position = 'fixed';
+    this.toast.style.top = '70px'; // Just below the header
+    this.toast.style.left = '50%';
+    this.toast.style.transform = 'translateX(-50%)';
+    this.toast.style.backgroundColor = '#333';
+    this.toast.style.color = 'white';
+    this.toast.style.padding = '10px 20px';
+    this.toast.style.borderRadius = '4px';
+    this.toast.style.fontSize = '12px';
+    this.toast.style.fontFamily = 'Press Start 2P, monospace';
+    this.toast.style.zIndex = '1000';
+    this.toast.style.border = '2px solid #4CAF50';
+    this.toast.style.display = 'none';
+    this.toast.style.textAlign = 'center';
+    this.toast.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+    document.body.appendChild(this.toast);
+    
+    // Create tooltip for selected block
+    this.selectedBlockTooltip = document.createElement('div');
+    this.selectedBlockTooltip.classList.add('selected-block-tooltip');
+    this.selectedBlockTooltip.style.position = 'absolute';
+    this.selectedBlockTooltip.style.backgroundColor = '#333';
+    this.selectedBlockTooltip.style.color = 'white';
+    this.selectedBlockTooltip.style.padding = '8px';
+    this.selectedBlockTooltip.style.borderRadius = '4px';
+    this.selectedBlockTooltip.style.fontSize = '12px';
+    this.selectedBlockTooltip.style.fontFamily = 'Press Start 2P, monospace';
+    this.selectedBlockTooltip.style.pointerEvents = 'none';
+    this.selectedBlockTooltip.style.zIndex = '1000';
+    this.selectedBlockTooltip.style.border = '2px solid #4CAF50';
+    this.selectedBlockTooltip.style.display = 'none';
+    this.selectedBlockTooltip.innerHTML = 'R: Rotate Block<br>Delete: Remove Block';
+    document.body.appendChild(this.selectedBlockTooltip);
+    
     // Select build tool by default
     this.selectTool('build');
   }
@@ -152,19 +192,67 @@ export class UI {
     });
     
     // Add active class to selected tool
-    const toolBtn = document.querySelector(`.tool-btn[data-tool="${tool}"]`);
+    const toolBtn = document.querySelector(`.tool-btn[data-tool="${tool === 'rotate' ? 'select' : tool}"]`);
     if (toolBtn) {
       toolBtn.classList.add('active');
     }
     
+    // Show toast with controls
+    if (this.toast) {
+      if (tool === 'select') {
+        this.showToast('Select Mode: Click to select a block<br>R: Rotate selected block<br>Delete: Remove selected block');
+      } else if (tool === 'build') {
+        this.showToast('Build Mode: Click to place block<br>R: Rotate before placing');
+      } else if (tool === 'delete') {
+        this.showToast('Delete Mode: Click to delete block');
+      } else if (tool === 'player') {
+        this.showToast('Player Mode: WASD to move<br>Space to jump');
+      }
+    }
+    
     if (this.onToolSelected) {
-      this.onToolSelected(tool);
+      // If the tool is "select", pass that value to the main class instead of "rotate"
+      this.onToolSelected(tool === 'rotate' ? 'select' : tool);
     }
     
     // Special handling for player mode
     if (tool === 'player') {
       // This will be handled by the main class
     }
+  }
+
+  // Method to show a toast notification
+  private showToast(message: string, duration: number = 3000) {
+    // Don't show toast if the main menu is visible
+    if (!this.toast || !this.pixelatedMenu.classList.contains('hidden')) return;
+    
+    // Clear any existing timeout
+    if (this.toastTimeout !== null) {
+      window.clearTimeout(this.toastTimeout);
+      this.toastTimeout = null;
+    }
+    
+    // Update and show toast
+    this.toast.innerHTML = message;
+    this.toast.style.display = 'block';
+    
+    // Animate in
+    this.toast.style.opacity = '0';
+    this.toast.style.transition = 'opacity 0.3s ease-in-out';
+    setTimeout(() => {
+      if (this.toast) this.toast.style.opacity = '1';
+    }, 10);
+    
+    // Set timeout to hide toast
+    this.toastTimeout = window.setTimeout(() => {
+      if (this.toast) {
+        this.toast.style.opacity = '0';
+        setTimeout(() => {
+          if (this.toast) this.toast.style.display = 'none';
+        }, 300);
+      }
+      this.toastTimeout = null;
+    }, duration);
   }
 
   setOnNewCourse(callback: (templateName: string) => void) {
@@ -295,5 +383,66 @@ export class UI {
   resetBlockSelection() {
     document.querySelectorAll('.block-btn').forEach(b => b.classList.remove('active'));
     document.body.classList.remove('placement-mode');
+  }
+
+  // Update selected block tooltip position to show under the block
+  public updateSelectedBlockTooltip(visible: boolean, position?: { x: number, y: number, z: number }) {
+    // Don't show tooltip if the main menu is visible (pixelated menu not hidden)
+    if (!this.selectedBlockTooltip || !visible || !position || !this.pixelatedMenu.classList.contains('hidden')) {
+      if (this.selectedBlockTooltip) this.selectedBlockTooltip.style.display = 'none';
+      return;
+    }
+
+    // Convert 3D position to screen coordinates
+    const canvas = document.getElementById('threejs-canvas') as HTMLCanvasElement;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    
+    // Position the tooltip under the block
+    // We need to estimate the screen position since we don't have direct access to the camera
+    this.selectedBlockTooltip.style.display = 'block';
+    this.selectedBlockTooltip.style.left = `${rect.left + rect.width/2}px`;
+    this.selectedBlockTooltip.style.top = `${rect.top + rect.height/2 + 100}px`;
+  }
+
+  // New method to position the tooltip using projected screen coordinates
+  public updateSelectedBlockTooltipPosition(x: number, y: number) {
+    // Don't show tooltip if the main menu is visible (pixelated menu not hidden)
+    if (!this.selectedBlockTooltip || !this.pixelatedMenu.classList.contains('hidden')) {
+      if (this.selectedBlockTooltip) this.selectedBlockTooltip.style.display = 'none';
+      return;
+    }
+    
+    const canvas = document.getElementById('threejs-canvas') as HTMLCanvasElement;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const canvasX = rect.left + x;
+    const canvasY = rect.top + y;
+    
+    // Position the tooltip under the block with a small offset
+    this.selectedBlockTooltip.style.display = 'block';
+    this.selectedBlockTooltip.style.left = `${canvasX}px`;
+    this.selectedBlockTooltip.style.top = `${canvasY + 40}px`; // 40px below the block
+  }
+
+  // Update the initializeToolbar method
+  public initializeToolbar() {
+    const rotateToolBtn = document.querySelector('.tool-btn[data-tool="rotate"]');
+    if (rotateToolBtn) {
+      rotateToolBtn.setAttribute('data-tool', 'select');
+      rotateToolBtn.setAttribute('title', 'Select (3)');
+      
+      const toolLabel = rotateToolBtn.querySelector('.tool-label');
+      if (toolLabel) {
+        toolLabel.textContent = 'Select';
+      }
+      
+      const toolIcon = rotateToolBtn.querySelector('.tool-icon');
+      if (toolIcon) {
+        toolIcon.textContent = '👆'; // Selection cursor icon
+      }
+    }
   }
 }

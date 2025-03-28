@@ -43,6 +43,8 @@ class ParkourHoboCourseBuilder {
   // Add these properties to the class
   private highlightedBlock: Block | null = null;
   private deleteMaterial: THREE.MeshBasicMaterial;
+  private selectedBlock: Block | null = null;
+  private selectionMaterial: THREE.MeshBasicMaterial;
 
   constructor() {
     // Initialize components
@@ -95,11 +97,21 @@ class ParkourHoboCourseBuilder {
       opacity: 0.7
     });
     
+    // Create a material for selection highlighting
+    this.selectionMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0x00ff00,  // Green
+      transparent: true,
+      opacity: 0.7
+    });
+    
     // Set up UI callbacks
     this.setupUICallbacks();
     
     // Set up event listeners
     this.setupEventListeners();
+    
+    // Initialize toolbar with select tool instead of rotate
+    this.ui.initializeToolbar();
     
     // Start animation loop
     this.animate();
@@ -215,17 +227,43 @@ class ParkourHoboCourseBuilder {
       if (this.isBuilderMode && this.currentTool === 'delete') {
         this.highlightBlockForDeletion();
       }
+      
+      // Highlight blocks when in select mode
+      if (this.isBuilderMode && this.currentTool === 'select') {
+        this.highlightBlockForSelection();
+      }
+      
+      // Update tooltip position for selected block if we have one
+      if (this.selectedBlock && this.selectedBlock.mesh) {
+        // Create a position vector from the block's position
+        const blockPosition = new THREE.Vector3(
+          this.selectedBlock.position.x, 
+          this.selectedBlock.position.y,
+          this.selectedBlock.position.z
+        );
+        
+        // Project the 3D position to screen coordinates
+        const screenPosition = blockPosition.clone().project(this.camera);
+        
+        // Convert to pixel coordinates
+        const canvas = this.renderer.domElement;
+        const x = (screenPosition.x + 1) * canvas.width / 2;
+        const y = (-screenPosition.y + 1) * canvas.height / 2;
+        
+        // Update tooltip with computed screen coordinates
+        this.ui.updateSelectedBlockTooltipPosition(x, y);
+      }
     });
     
     this.renderer.domElement.addEventListener('click', () => {
-      // Only place/delete blocks if we're not dragging the camera
+      // Only place/delete/select blocks if we're not dragging the camera
       if (!isDragging && this.isBuilderMode) {
         if (this.currentTool === 'build' && this.selectedBlockType && this.canPlaceBlock) {
           this.buildBlock();
         } else if (this.currentTool === 'delete' && this.highlightedBlock) {
           this.deleteHighlightedBlock();
-        } else if (this.currentTool === 'rotate' && this.selectedBlockType) {
-          this.rotateBlock();
+        } else if (this.currentTool === 'select' && this.highlightedBlock) {
+          this.selectHighlightedBlock();
         }
       }
       
@@ -244,8 +282,8 @@ class ParkourHoboCourseBuilder {
         this.ui.selectTool('delete');
         this.currentTool = 'delete';
       } else if (event.key === '3') {
-        this.ui.selectTool('rotate');
-        this.currentTool = 'rotate';
+        this.ui.selectTool('select');  // Changed from 'rotate' to 'select'
+        this.currentTool = 'select';
       } else if (event.key === 'b' || event.key === 'B') {
         // B toggles between builder and player modes
         this.toggleMode();
@@ -255,6 +293,50 @@ class ParkourHoboCourseBuilder {
           this.ui.selectTool(this.currentTool); // Go back to previous build tool
         } else {
           this.ui.selectTool('player');
+        }
+      } else if (event.key === 'r' || event.key === 'R') {
+        // Rotate logic for both modes
+        if (this.isBuilderMode) {
+          if (this.currentTool === 'build' && this.selectedBlockType) {
+            // Rotate the placeholder in build mode
+            this.rotateBlock();
+          } else if (this.currentTool === 'select' && this.selectedBlock) {
+            // Rotate the selected block in select mode
+            this.rotateSelectedBlock();
+          }
+        }
+      } else if (event.key === 'Delete' || event.key === 'Backspace') {
+        // Add delete functionality when a block is selected
+        if (this.isBuilderMode && this.currentTool === 'select' && this.selectedBlock) {
+          const blockToDelete = this.selectedBlock;
+          this.selectedBlock = null;
+          this.ui.updateSelectedBlockTooltip(false);
+          
+          // Find and delete the block
+          if (this.currentCourse) {
+            const blockIndex = this.currentCourse.blocks.findIndex(block => block === blockToDelete);
+            if (blockIndex >= 0) {
+              const block = this.currentCourse.blocks[blockIndex];
+              
+              // Remove from scene
+              if (block.mesh) {
+                this.scene.remove(block.mesh);
+              }
+              
+              // Remove from blocks array
+              this.currentCourse.blocks.splice(blockIndex, 1);
+              
+              // Update start/finish positions if needed
+              if (block.type === 'start') {
+                this.currentCourse.startPosition = { x: 0, y: 0, z: 0 };
+              } else if (block.type === 'finish') {
+                this.currentCourse.finishPosition = { x: 0, y: 0, z: 0 };
+              }
+              
+              // Update block counter
+              this.updateBlockCounter();
+            }
+          }
         }
       }
       
@@ -688,6 +770,100 @@ class ParkourHoboCourseBuilder {
     }
   }
 
+  private highlightBlockForSelection() {
+    // Reset previous highlighted block
+    if (this.highlightedBlock && this.highlightedBlock !== this.selectedBlock) {
+      this.highlightedBlock.unhighlight();
+      this.highlightedBlock = null;
+    }
+    
+    if (!this.currentCourse) return;
+    
+    // Cast a ray to find which block we're pointing at
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const intersects = this.raycaster.intersectObjects(this.scene.children, true);
+    
+    for (const intersect of intersects) {
+      // Skip grid, placeholders, etc.
+      if (!(intersect.object instanceof THREE.Mesh) || 
+          intersect.object === this.placeholderMesh || 
+          (this.placeholderMesh instanceof THREE.Group && this.placeholderMesh.children.includes(intersect.object)) ||
+          intersect.object instanceof THREE.GridHelper) continue;
+      
+      // Find the block that matches this mesh or is parent of this mesh
+      let block = this.currentCourse.blocks.find(b => b.mesh === intersect.object);
+      
+      // If not found directly, check if it's a child of a group
+      if (!block) {
+        block = this.currentCourse.blocks.find(b => 
+          b.mesh instanceof THREE.Group && 
+          b.mesh.children.some(child => child === intersect.object)
+        );
+      }
+      
+      if (block && block !== this.selectedBlock) {
+        // Store the highlighted block
+        this.highlightedBlock = block;
+        
+        // Highlight the block using its built-in method (only if not already selected)
+        if (block !== this.selectedBlock) {
+          block.highlight(this.selectionMaterial);
+        }
+        break;
+      }
+    }
+  }
+
+  private selectHighlightedBlock() {
+    // Clear previous selection
+    if (this.selectedBlock) {
+      this.selectedBlock.unhighlight();
+      this.selectedBlock = null;
+      this.ui.updateSelectedBlockTooltip(false);
+    }
+    
+    // Select the currently highlighted block
+    if (this.highlightedBlock) {
+      this.selectedBlock = this.highlightedBlock;
+      this.selectedBlock.highlight(this.selectionMaterial);
+      
+      // Update the tooltip below the selected block
+      if (this.selectedBlock.mesh) {
+        // Create a position vector from the block's position
+        const blockPosition = new THREE.Vector3(
+          this.selectedBlock.position.x, 
+          this.selectedBlock.position.y,
+          this.selectedBlock.position.z
+        );
+        
+        // Project the 3D position to screen coordinates
+        const screenPosition = blockPosition.clone().project(this.camera);
+        
+        // Convert to pixel coordinates
+        const canvas = this.renderer.domElement;
+        const x = (screenPosition.x + 1) * canvas.width / 2;
+        const y = (-screenPosition.y + 1) * canvas.height / 2;
+        
+        // Update tooltip with computed screen coordinates
+        this.ui.updateSelectedBlockTooltipPosition(x, y);
+      }
+    }
+  }
+
+  private rotateSelectedBlock() {
+    if (!this.selectedBlock || !this.selectedBlock.mesh) return;
+    
+    // Rotate the selected block by 90 degrees
+    const currentRotation = this.selectedBlock.rotation;
+    const newYRotation = (currentRotation.y + 90) % 360;
+    
+    // Update the rotation in the block data
+    this.selectedBlock.rotation.y = newYRotation;
+    
+    // Apply rotation to the mesh
+    this.selectedBlock.mesh.rotation.y = THREE.MathUtils.degToRad(newYRotation);
+  }
+
   // Update the tool selection method
   public setTool(tool: string) {
     this.currentTool = tool;
@@ -707,6 +883,13 @@ class ParkourHoboCourseBuilder {
     if (tool !== 'delete' && this.highlightedBlock) {
       this.highlightedBlock.unhighlight();
       this.highlightedBlock = null;
+    }
+    
+    // Clear selected block if switching away from select tool
+    if (tool !== 'select' && this.selectedBlock) {
+      this.selectedBlock.unhighlight();
+      this.selectedBlock = null;
+      this.ui.updateSelectedBlockTooltip(false);
     }
   }
 }
