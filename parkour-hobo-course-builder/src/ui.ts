@@ -178,7 +178,7 @@ export class UI {
     this.selectedBlockTooltip.style.zIndex = '1000';
     this.selectedBlockTooltip.style.border = '2px solid #4CAF50';
     this.selectedBlockTooltip.style.display = 'none';
-    this.selectedBlockTooltip.innerHTML = 'R: Rotate Block<br>Delete: Remove Block';
+    this.selectedBlockTooltip.innerHTML = 'R: Rotate Block<br>Delete: Remove Block<br>Esc: Cancel Selection';
     document.body.appendChild(this.selectedBlockTooltip);
     
     // Select build tool by default
@@ -200,7 +200,7 @@ export class UI {
     // Show toast with controls
     if (this.toast) {
       if (tool === 'select') {
-        this.showToast('Select Mode: Click to select a block<br>R: Rotate selected block<br>Delete: Remove selected block');
+        this.showToast('Select Mode: Click to select a block<br>R: Rotate selected block<br>Delete: Remove selected block<br>Esc: Cancel selection');
       } else if (tool === 'build') {
         this.showToast('Build Mode: Click to place block<br>R: Rotate before placing');
       } else if (tool === 'delete') {

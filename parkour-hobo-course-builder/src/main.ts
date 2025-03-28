@@ -250,8 +250,12 @@ class ParkourHoboCourseBuilder {
         const x = (screenPosition.x + 1) * canvas.width / 2;
         const y = (-screenPosition.y + 1) * canvas.height / 2;
         
-        // Update tooltip with computed screen coordinates
-        this.ui.updateSelectedBlockTooltipPosition(x, y);
+        // Update tooltip with computed screen coordinates (only when in select tool mode)
+        if (this.currentTool === 'select') {
+          this.ui.updateSelectedBlockTooltipPosition(x, y);
+        } else {
+          this.ui.updateSelectedBlockTooltip(false);
+        }
       }
     });
     
@@ -338,6 +342,11 @@ class ParkourHoboCourseBuilder {
             }
           }
         }
+      } else if (event.key === 'Escape') {
+        // Cancel selection when Escape key is pressed
+        if (this.selectedBlock) {
+          this.clearSelection();
+        }
       }
       
       // Player controls
@@ -386,6 +395,11 @@ class ParkourHoboCourseBuilder {
     } else {
       // Switch to player mode
       this.ui.showPlayerMode();
+      
+      // Clear any selections when switching to player mode
+      if (this.selectedBlock) {
+        this.clearSelection();
+      }
       
       // Create player at start position
       if (this.currentCourse && this.currentCourse.startPosition) {
@@ -747,6 +761,15 @@ class ParkourHoboCourseBuilder {
     if (blockIndex >= 0) {
       const block = this.currentCourse.blocks[blockIndex];
       
+      // If this is also the selected block, clear that reference first
+      if (this.selectedBlock === block) {
+        this.ui.updateSelectedBlockTooltip(false);
+        this.selectedBlock = null;
+      }
+      
+      // Unhighlight before removing
+      block.unhighlight();
+      
       // Remove from scene
       if (block.mesh) {
         this.scene.remove(block.mesh);
@@ -771,7 +794,7 @@ class ParkourHoboCourseBuilder {
   }
 
   private highlightBlockForSelection() {
-    // Reset previous highlighted block
+    // Reset previous highlighted block (but not if it's the selected block)
     if (this.highlightedBlock && this.highlightedBlock !== this.selectedBlock) {
       this.highlightedBlock.unhighlight();
       this.highlightedBlock = null;
@@ -801,30 +824,46 @@ class ParkourHoboCourseBuilder {
         );
       }
       
-      if (block && block !== this.selectedBlock) {
+      if (block) {
+        // If we're hovering over the already selected block, just return without highlighting
+        if (block === this.selectedBlock) {
+          return;
+        }
+        
         // Store the highlighted block
         this.highlightedBlock = block;
         
-        // Highlight the block using its built-in method (only if not already selected)
-        if (block !== this.selectedBlock) {
-          block.highlight(this.selectionMaterial);
-        }
+        // Highlight with selection material
+        block.highlight(this.selectionMaterial);
         break;
       }
     }
   }
 
   private selectHighlightedBlock() {
+    // If we're selecting the same block that's already selected, deselect it
+    if (this.selectedBlock === this.highlightedBlock) {
+      this.clearSelection();
+      return;
+    }
+    
     // Clear previous selection
     if (this.selectedBlock) {
-      this.selectedBlock.unhighlight();
-      this.selectedBlock = null;
-      this.ui.updateSelectedBlockTooltip(false);
+      this.clearSelection();
     }
     
     // Select the currently highlighted block
     if (this.highlightedBlock) {
+      // Store the reference to the highlighted block
       this.selectedBlock = this.highlightedBlock;
+      
+      // Clear the highlighted block reference to avoid duplicate highlighting
+      this.highlightedBlock = null;
+      
+      // Make sure the block's original materials are reset before applying new highlight
+      this.selectedBlock.unhighlight();
+      
+      // Apply the selection highlight
       this.selectedBlock.highlight(this.selectionMaterial);
       
       // Update the tooltip below the selected block
@@ -866,6 +905,7 @@ class ParkourHoboCourseBuilder {
 
   // Update the tool selection method
   public setTool(tool: string) {
+    const previousTool = this.currentTool;
     this.currentTool = tool;
     
     // Hide placeholder when not in build mode
@@ -880,16 +920,33 @@ class ParkourHoboCourseBuilder {
     }
     
     // Reset any highlighted blocks if switching away from delete tool
-    if (tool !== 'delete' && this.highlightedBlock) {
+    if (previousTool === 'delete' && this.highlightedBlock) {
       this.highlightedBlock.unhighlight();
       this.highlightedBlock = null;
     }
     
     // Clear selected block if switching away from select tool
-    if (tool !== 'select' && this.selectedBlock) {
+    if (previousTool === 'select') {
+      this.clearSelection();
+    }
+    
+    // Ensure tooltip is hidden when not in select mode
+    if (tool !== 'select') {
+      this.ui.updateSelectedBlockTooltip(false);
+    }
+  }
+
+  private clearSelection() {
+    if (this.selectedBlock) {
       this.selectedBlock.unhighlight();
       this.selectedBlock = null;
       this.ui.updateSelectedBlockTooltip(false);
+    }
+    
+    // Also clear any highlighted blocks to ensure clean state
+    if (this.highlightedBlock) {
+      this.highlightedBlock.unhighlight();
+      this.highlightedBlock = null;
     }
   }
 }
