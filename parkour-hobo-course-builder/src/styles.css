@@ -5,11 +5,12 @@
   image-rendering: pixelated;
 }
 
-body, html {
+body,
+html {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  font-family: 'Press Start 2P', 'Courier New', monospace;
+  font-family: "Press Start 2P", "Courier New", monospace;
   background-color: #121212;
 }
 
@@ -36,7 +37,7 @@ body, html {
   color: white;
   font-size: 32px;
   margin-bottom: 40px;
-  text-shadow: 3px 3px 0 #4CAF50;
+  text-shadow: 3px 3px 0 #4caf50;
   text-align: center;
 }
 
@@ -48,29 +49,33 @@ body, html {
 }
 
 .menu-container {
-  border: 4px solid #4CAF50;
+  border: 4px solid #4caf50;
   padding: 20px;
   width: 80%;
   max-width: 500px;
   background-color: #1a1a1a;
 }
 
-.menu-btn, .template-btn, .back-btn {
+.menu-btn,
+.template-btn,
+.back-btn {
   display: block;
   width: 100%;
   padding: 12px;
   margin: 10px 0;
-  background-color: #4CAF50;
+  background-color: #4caf50;
   color: white;
   border: none;
-  font-family: 'Press Start 2P', monospace;
+  font-family: "Press Start 2P", monospace;
   font-size: 16px;
   cursor: pointer;
   box-shadow: 3px 3px 0 #222;
   text-align: center;
 }
 
-.menu-btn:hover, .template-btn:hover, .back-btn:hover {
+.menu-btn:hover,
+.template-btn:hover,
+.back-btn:hover {
   background-color: #3e8e41;
 }
 
@@ -83,7 +88,9 @@ body, html {
   background-color: #d32f2f;
 }
 
-#main-menu, #new-course-menu, #load-course-menu {
+#main-menu,
+#new-course-menu,
+#load-course-menu {
   width: 100%;
 }
 
@@ -99,7 +106,7 @@ body, html {
   width: 100%;
   height: 60px;
   background-color: #121212;
-  border-bottom: 4px solid #4CAF50;
+  border-bottom: 4px solid #4caf50;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -119,20 +126,20 @@ body, html {
 
 #course-name {
   background-color: #333;
-  border: 2px solid #4CAF50;
+  border: 2px solid #4caf50;
   color: white;
   padding: 5px 10px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: "Press Start 2P", monospace;
   font-size: 12px;
   width: 230px;
 }
 
 #header button {
-  background-color: #4CAF50;
+  background-color: #4caf50;
   color: white;
   border: none;
   padding: 5px 10px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: "Press Start 2P", monospace;
   font-size: 12px;
   cursor: pointer;
 }
@@ -162,7 +169,7 @@ body, html {
   width: 200px;
   height: calc(100% - 60px);
   background-color: #121212;
-  border-right: 4px solid #4CAF50;
+  border-right: 4px solid #4caf50;
   padding: 20px 10px;
   overflow-y: auto;
   z-index: 90;
@@ -175,8 +182,8 @@ body, html {
   margin-bottom: 10px;
   background-color: #333;
   color: white;
-  border: 2px solid #4CAF50;
-  font-family: 'Press Start 2P', monospace;
+  border: 2px solid #4caf50;
+  font-family: "Press Start 2P", monospace;
   font-size: 12px;
   cursor: pointer;
   text-align: center;
@@ -187,7 +194,7 @@ body, html {
 }
 
 .block-btn.active {
-  background-color: #4CAF50;
+  background-color: #4caf50;
 }
 
 /* Three.js Canvas */
@@ -224,7 +231,7 @@ body, html {
 
 .modal-content {
   background-color: #1a1a1a;
-  border: 4px solid #4CAF50;
+  border: 4px solid #4caf50;
   padding: 20px;
   width: 80%;
   max-width: 600px;
@@ -246,7 +253,7 @@ body, html {
   color: white;
   border: none;
   padding: 10px 20px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: "Press Start 2P", monospace;
   font-size: 14px;
   cursor: pointer;
   display: block;
@@ -268,7 +275,7 @@ body, html {
   height: 200px;
   background-color: #333;
   color: white;
-  border: 2px solid #4CAF50;
+  border: 2px solid #4caf50;
   padding: 10px;
   font-family: monospace;
   margin-bottom: 20px;
@@ -276,11 +283,11 @@ body, html {
 }
 
 #close-export-modal {
-  background-color: #4CAF50;
+  background-color: #4caf50;
   color: white;
   border: none;
   padding: 10px 20px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: "Press Start 2P", monospace;
   font-size: 14px;
   cursor: pointer;
 }
@@ -310,11 +317,11 @@ body, html {
 }
 
 .load-course-btn {
-  background-color: #4CAF50;
+  background-color: #4caf50;
   color: white;
   border: none;
   padding: 5px 10px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: "Press Start 2P", monospace;
   font-size: 10px;
   cursor: pointer;
 }
@@ -324,7 +331,7 @@ body, html {
   color: white;
   border: none;
   padding: 5px 10px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: "Press Start 2P", monospace;
   font-size: 10px;
   cursor: pointer;
 }
@@ -335,8 +342,8 @@ body, html {
 }
 
 .block-btn.active {
-  background-color: #4CAF50;
-  box-shadow: 0 0 10px #4CAF50;
+  background-color: #4caf50;
+  box-shadow: 0 0 10px #4caf50;
 }
 
 /* Add these responsive styles */
@@ -348,13 +355,15 @@ body, html {
     margin-bottom: 20px;
     padding: 0 10px;
   }
-  
+
   .menu-container {
     width: 90%;
     padding: 15px;
   }
-  
-  .menu-btn, .template-btn, .back-btn {
+
+  .menu-btn,
+  .template-btn,
+  .back-btn {
     padding: 10px;
     font-size: 14px;
   }
@@ -364,12 +373,14 @@ body, html {
   #pixelated-menu h1 {
     font-size: 18px;
   }
-  
+
   #pixelated-menu h2 {
     font-size: 16px;
   }
-  
-  .menu-btn, .template-btn, .back-btn {
+
+  .menu-btn,
+  .template-btn,
+  .back-btn {
     padding: 8px;
     font-size: 12px;
   }
@@ -382,27 +393,27 @@ body, html {
     height: auto;
     padding: 10px;
   }
-  
+
   .header-title {
     margin-bottom: 10px;
   }
-  
+
   .header-controls {
     margin-bottom: 10px;
     flex-wrap: wrap;
     justify-content: center;
   }
-  
+
   #course-name {
     width: 100%;
     margin-bottom: 5px;
   }
-  
+
   #block-counter {
     width: 100%;
     text-align: center;
   }
-  
+
   /* Adjust canvas for taller header */
   .builder-mode #threejs-canvas {
     top: 110px;
@@ -422,12 +433,12 @@ body, html {
   #side-menu {
     width: 150px;
   }
-  
+
   .block-btn {
     padding: 8px 5px;
     font-size: 10px;
   }
-  
+
   /* Adjust canvas for narrower side menu */
   .builder-mode #threejs-canvas {
     left: 150px;
@@ -439,12 +450,12 @@ body, html {
   #side-menu {
     width: 100px;
   }
-  
+
   .block-btn {
     padding: 6px 3px;
     font-size: 8px;
   }
-  
+
   /* Adjust canvas for even narrower side menu */
   .builder-mode #threejs-canvas {
     left: 100px;
@@ -458,16 +469,16 @@ body, html {
     width: 90%;
     padding: 15px;
   }
-  
+
   .modal h2 {
     font-size: 18px;
     margin-bottom: 15px;
   }
-  
+
   #export-code {
     height: 150px;
   }
-  
+
   #close-export-modal {
     font-size: 12px;
     padding: 8px 15px;
@@ -480,9 +491,11 @@ body, html {
     top: 150px;
     left: 0;
     width: 100%;
-    height: calc(100% - 150px - 80px); /* Account for header and controls at bottom */
+    height: calc(
+      100% - 150px - 80px
+    ); /* Account for header and controls at bottom */
   }
-  
+
   #side-menu {
     top: auto;
     bottom: 0;
@@ -490,14 +503,14 @@ body, html {
     width: 100%;
     height: 80px;
     border-right: none;
-    border-top: 4px solid #4CAF50;
+    border-top: 4px solid #4caf50;
     display: flex;
     flex-wrap: wrap;
     justify-content: space-around;
     padding: 5px;
     overflow-x: auto;
   }
-  
+
   .block-btn {
     width: 23%;
     margin: 1%;
@@ -513,7 +526,7 @@ body, html {
   left: 50%;
   transform: translateX(-50%);
   background-color: #121212;
-  border: 4px solid #4CAF50;
+  border: 4px solid #4caf50;
   border-radius: 10px;
   display: flex;
   justify-content: center;
@@ -539,8 +552,8 @@ body, html {
 }
 
 .tool-btn.active {
-  background-color: #4CAF50;
-  box-shadow: 0 0 8px #4CAF50;
+  background-color: #4caf50;
+  box-shadow: 0 0 8px #4caf50;
 }
 
 .tool-icon {
@@ -551,7 +564,7 @@ body, html {
 .tool-label {
   color: white;
   font-size: 10px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: "Press Start 2P", monospace;
 }
 
 /* Add keyboard shortcut indicators */
@@ -560,7 +573,7 @@ body, html {
   position: absolute;
   top: 2px;
   right: 2px;
-  background-color: #4CAF50;
+  background-color: #4caf50;
   color: white;
   font-size: 8px;
   padding: 2px 4px;
@@ -576,15 +589,15 @@ body, html {
     border-left: none;
     border-right: none;
   }
-  
+
   .tool-btn {
     margin: 0 5px;
   }
-  
+
   .tool-icon {
     font-size: 20px;
   }
-  
+
   .tool-label {
     font-size: 8px;
   }
@@ -600,15 +613,15 @@ body, html {
 .player-btn {
   padding: 10px 15px;
   margin: 5px;
-  background-color: #4CAF50;
+  background-color: #4caf50;
   color: white;
   border: none;
   border-radius: 4px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: "Press Start 2P", monospace;
   font-size: 12px;
   cursor: pointer;
   outline: none;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
   transition: all 0.2s ease;
 }
 
@@ -642,7 +655,7 @@ body, html {
 }
 
 .success-message {
-  font-family: 'Press Start 2P', monospace;
+  font-family: "Press Start 2P", monospace;
   font-size: 24px;
   color: white;
   text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
@@ -650,22 +663,30 @@ body, html {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes bounce {
-  from { transform: scale(1); }
-  to { transform: scale(1.05); }
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.05);
+  }
 }
 
 /* Atmosphere Toggle Button */
 .atmosphere-btn {
-  background-color: #4CAF50;
+  background-color: #4caf50;
   color: white;
   border: none;
   padding: 5px 10px;
-  font-family: 'Press Start 2P', monospace;
+  font-family: "Press Start 2P", monospace;
   font-size: 12px;
   cursor: pointer;
   display: flex;
@@ -693,5 +714,3 @@ body, html {
     padding: 5px;
   }
 }
-
-

@@ -1,0 +1,17 @@
+{
+  // Use Devvit's base configuration
+  "extends": "@devvit/public-api/devvit.tsconfig.json",
+  "compilerOptions": {
+    // Ensure noEmit is true for the Devvit part
+    "noEmit": true,
+    // *** FIX: Explicitly override types to remove vitest/globals ***
+    "types": []
+    // Ensure jsx options from extends are preserved or add them if needed:
+    // "jsx": "react-jsx",
+    // "jsxImportSource": "@devvit/public-api"
+  },
+  // Include ONLY the Devvit source code here
+  "include": ["./src/**/*"]
+  // Exclude webroot to prevent conflicts (good practice)
+  // "exclude": ["./webroot/**/*", "node_modules"]
+}

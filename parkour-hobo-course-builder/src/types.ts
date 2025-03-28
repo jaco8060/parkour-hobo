@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from "three";
 
 export interface Vector3 {
   x: number;
@@ -17,11 +17,11 @@ export interface PlayerControls {
 
 // Define default control mappings
 export const DEFAULT_CONTROLS: PlayerControls = {
-  forward: 'w',
-  backward: 's',
-  left: 'a',
-  right: 'd',
-  jump: ' ' // Space
+  forward: "w",
+  backward: "s",
+  left: "a",
+  right: "d",
+  jump: " ", // Space
 };
 
 export interface Block {
@@ -36,7 +36,7 @@ export interface Block {
 }
 
 export interface AtmosphereSettings {
-  isDayMode: boolean;  // true for day, false for night
+  isDayMode: boolean; // true for day, false for night
 }
 
 export interface Course {
@@ -60,7 +60,13 @@ export interface BlockDefinition {
   color: string;
   limit?: number;
   previewColor?: string;
-  createMesh: (position: Vector3, rotation: Vector3) => THREE.Mesh | THREE.Group;
+  createMesh: (
+    position: Vector3,
+    rotation: Vector3
+  ) => THREE.Mesh | THREE.Group;
   createPlaceholder: () => THREE.Mesh | THREE.Group;
-  highlightPlaceholder: (mesh: THREE.Mesh | THREE.Group, isValid: boolean) => void;
+  highlightPlaceholder: (
+    mesh: THREE.Mesh | THREE.Group,
+    isValid: boolean
+  ) => void;
 }

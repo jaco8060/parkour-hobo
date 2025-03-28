@@ -1,52 +1,59 @@
-import { Course, Template, AtmosphereSettings } from './types';
-import { BlockFactory } from './blockFactory';
+import { BlockFactory } from "./blockFactory";
+import { AtmosphereSettings, Course, Template } from "./types";
 
 export class CourseManager {
   private courses: Course[] = [];
   private templates: Template[] = [];
   private blockFactory: BlockFactory;
-  
+
   constructor() {
     this.blockFactory = new BlockFactory();
     this.loadTemplates();
     this.loadCoursesFromStorage();
   }
-  
+
   private loadTemplates(): void {
     // Define some default templates
     this.templates = [
       {
-        name: 'small',
-        maxBlocks: 200
+        name: "small",
+        maxBlocks: 200,
       },
       {
-        name: 'medium',
-        maxBlocks: 400
+        name: "medium",
+        maxBlocks: 400,
       },
       {
-        name: 'large',
-        maxBlocks: 600
-      }
+        name: "large",
+        maxBlocks: 600,
+      },
     ];
   }
-  
+
   private loadCoursesFromStorage(): void {
-    const savedCourses = localStorage.getItem('parkourHoboCourses');
+    const savedCourses = localStorage.getItem("parkourHoboCourses");
     if (savedCourses) {
       try {
         const courseData = JSON.parse(savedCourses);
         // Convert the serialized courses back to Course objects with proper methods
-        this.courses = courseData.map((course: any) => this.deserializeCourse(course));
+        this.courses = courseData.map((course: any) =>
+          this.deserializeCourse(course)
+        );
       } catch (e) {
-        console.error('Failed to load courses from local storage', e);
+        console.error("Failed to load courses from local storage", e);
         this.courses = [];
       }
     }
   }
-  
+
   private saveCoursesToStorage(): void {
-    const serializedCourses = this.courses.map(course => this.serializeCourse(course));
-    localStorage.setItem('parkourHoboCourses', JSON.stringify(serializedCourses));
+    const serializedCourses = this.courses.map((course) =>
+      this.serializeCourse(course)
+    );
+    localStorage.setItem(
+      "parkourHoboCourses",
+      JSON.stringify(serializedCourses)
+    );
   }
 
   private serializeCourse(course: Course): any {
@@ -56,14 +63,14 @@ export class CourseManager {
       name: course.name,
       template: course.template,
       // Remove the mesh property from blocks before serialization
-      blocks: course.blocks.map(block => ({
+      blocks: course.blocks.map((block) => ({
         type: block.type,
         position: block.position,
-        rotation: block.rotation
+        rotation: block.rotation,
       })),
       startPosition: course.startPosition,
       finishPosition: course.finishPosition,
-      atmosphere: course.atmosphere // Save atmosphere settings
+      atmosphere: course.atmosphere, // Save atmosphere settings
     };
   }
 
@@ -84,18 +91,18 @@ export class CourseManager {
       startPosition: courseData.startPosition,
       finishPosition: courseData.finishPosition,
       // Use the stored atmosphere settings, or default to day mode if none exist
-      atmosphere: courseData.atmosphere || { isDayMode: true }
+      atmosphere: courseData.atmosphere || { isDayMode: true },
     };
-    
+
     return course;
   }
-  
+
   public createNewCourse(name: string, templateName: string): Course {
     const template = this.getTemplate(templateName);
     if (!template) {
       throw new Error(`Template not found: ${templateName}`);
     }
-    
+
     const course: Course = {
       id: this.generateId(),
       name,
@@ -103,113 +110,124 @@ export class CourseManager {
       blocks: [],
       startPosition: { x: 0, y: 0, z: 0 },
       finishPosition: { x: 0, y: 0, z: 0 },
-      atmosphere: { isDayMode: true } // Default to day mode
+      atmosphere: { isDayMode: true }, // Default to day mode
     };
-    
+
     this.courses.push(course);
     this.saveCoursesToStorage();
-    
+
     return course;
   }
-  
+
   public saveCourse(course: Course): void {
-    const index = this.courses.findIndex(c => c.id === course.id);
-    
+    const index = this.courses.findIndex((c) => c.id === course.id);
+
     if (index >= 0) {
       this.courses[index] = course;
     } else {
       this.courses.push(course);
     }
-    
+
     this.saveCoursesToStorage();
   }
-  
+
   public deleteCourse(courseId: string): void {
-    const index = this.courses.findIndex(c => c.id === courseId);
-    
+    const index = this.courses.findIndex((c) => c.id === courseId);
+
     if (index >= 0) {
       this.courses.splice(index, 1);
       this.saveCoursesToStorage();
     }
   }
-  
+
   public getCourse(courseId: string): Course | null {
-    return this.courses.find(c => c.id === courseId) || null;
+    return this.courses.find((c) => c.id === courseId) || null;
   }
-  
+
   public getAllCourses(): Course[] {
     return [...this.courses];
   }
-  
+
   public getTemplate(templateName: string): Template {
-    const template = this.templates.find(t => t.name === templateName);
+    const template = this.templates.find((t) => t.name === templateName);
     if (!template) {
       throw new Error(`Template not found: ${templateName}`);
     }
     return template;
   }
-  
+
   public getAllTemplates(): Template[] {
     return [...this.templates];
   }
-  
+
   public exportCourseAsJson(course: Course): string {
     const exportData = this.serializeCourse(course);
     return JSON.stringify(exportData, null, 2);
   }
-  
+
   // Add validation method to check if a course has exactly one start and one finish block
   public validateCourse(course: Course): { valid: boolean; message: string } {
     if (!course || !course.blocks) {
-      return { valid: false, message: 'Invalid course data' };
+      return { valid: false, message: "Invalid course data" };
     }
-    
-    const startBlocks = course.blocks.filter(block => block.type === 'start');
-    const finishBlocks = course.blocks.filter(block => block.type === 'finish');
-    
+
+    const startBlocks = course.blocks.filter((block) => block.type === "start");
+    const finishBlocks = course.blocks.filter(
+      (block) => block.type === "finish"
+    );
+
     if (startBlocks.length === 0) {
-      return { valid: false, message: 'Course must have a Start block' };
+      return { valid: false, message: "Course must have a Start block" };
     }
-    
+
     if (startBlocks.length > 1) {
-      return { valid: false, message: 'Course must have exactly one Start block' };
+      return {
+        valid: false,
+        message: "Course must have exactly one Start block",
+      };
     }
-    
+
     if (finishBlocks.length === 0) {
-      return { valid: false, message: 'Course must have a Finish block' };
+      return { valid: false, message: "Course must have a Finish block" };
     }
-    
+
     if (finishBlocks.length > 1) {
-      return { valid: false, message: 'Course must have exactly one Finish block' };
+      return {
+        valid: false,
+        message: "Course must have exactly one Finish block",
+      };
     }
-    
-    return { valid: true, message: 'Course is valid' };
+
+    return { valid: true, message: "Course is valid" };
   }
-  
+
   public importCourseFromJson(jsonData: string): Course {
     try {
       const courseData = JSON.parse(jsonData);
       const course = this.deserializeCourse(courseData);
-      
+
       // Assign a new ID to avoid conflicts
       course.id = this.generateId();
-      
+
       this.courses.push(course);
       this.saveCoursesToStorage();
-      
+
       return course;
     } catch (e) {
-      console.error('Failed to import course from JSON', e);
-      throw new Error('Invalid course data');
+      console.error("Failed to import course from JSON", e);
+      throw new Error("Invalid course data");
     }
   }
-  
+
   private generateId(): string {
     return Math.random().toString(36).substring(2, 15);
   }
-  
+
   // Add method to update atmosphere settings
-  public updateAtmosphere(courseId: string, settings: AtmosphereSettings): void {
+  public updateAtmosphere(
+    courseId: string,
+    settings: AtmosphereSettings
+  ): void {
     const course = this.getCourse(courseId);
     if (course) {
       course.atmosphere = settings;

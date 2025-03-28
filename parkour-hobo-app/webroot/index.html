@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <meta charset="UTF-8" />
+    <title>Parkour Hobo Player</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- Canvas for the Three.js game -->
+    <canvas id="threejs-canvas"></canvas>
+
+    <!-- Loading indicator (optional) -->
+    <div id="loading-indicator" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-family: sans-serif; font-size: 2em; display: block;">Initializing...</div>
+
+    <!-- *** UPDATED SCRIPT PATH *** -->
+    <!-- Load the bundled script from the dist folder -->
+    <script type="module" src="./dist/script.js"></script>
+  </body>
+</html>

@@ -1,100 +1,143 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Parkour Hobo Course Builder</title>
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./src/styles.css">
-</head>
-<body>
-  <div id="pixelated-menu" class="active">
-    <h1>PARKOUR HOBO COURSE BUILDER</h1>
-    <div class="menu-container">
-      <div id="main-menu">
-        <button id="new-course-btn" class="menu-btn">New Course</button>
-        <button id="load-course-btn" class="menu-btn">Load Course</button>
-      </div>
-      
-      <div id="new-course-menu" class="hidden">
-        <h2>Select Template</h2>
-        <button class="template-btn" data-template="small">Small (200 blocks)</button>
-        <button class="template-btn" data-template="medium">Medium (400 blocks)</button>
-        <button class="template-btn" data-template="large">Large (600 blocks)</button>
-        <button class="back-btn">Back</button>
-      </div>
-      
-      <div id="load-course-menu" class="hidden">
-        <h2>Saved Courses</h2>
-        <div id="saved-courses-list">
-          <!-- Courses will be loaded here dynamically -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Parkour Hobo Course Builder</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div id="pixelated-menu" class="active">
+      <h1>PARKOUR HOBO COURSE BUILDER</h1>
+      <div class="menu-container">
+        <div id="main-menu">
+          <button id="new-course-btn" class="menu-btn">New Course</button>
+          <button id="load-course-btn" class="menu-btn">Load Course</button>
         </div>
-        <button class="back-btn">Back</button>
+
+        <div id="new-course-menu" class="hidden">
+          <h2>Select Template</h2>
+          <button class="template-btn" data-template="small">
+            Small (200 blocks)
+          </button>
+          <button class="template-btn" data-template="medium">
+            Medium (400 blocks)
+          </button>
+          <button class="template-btn" data-template="large">
+            Large (600 blocks)
+          </button>
+          <button class="back-btn">Back</button>
+        </div>
+
+        <div id="load-course-menu" class="hidden">
+          <h2>Saved Courses</h2>
+          <div id="saved-courses-list">
+            <!-- Courses will be loaded here dynamically -->
+          </div>
+          <button class="back-btn">Back</button>
+        </div>
       </div>
     </div>
-  </div>
 
-  <header id="header" class="hidden">
-    <div class="header-title">Parkour Hobo Course Builder</div>
-    <div class="header-controls">
-      <input type="text" id="course-name" placeholder="Course Name" maxlength="20">
-      <button id="save-course-btn">Save Course</button>
-      <button id="export-code-btn">Export Code</button>
-      <button id="reset-btn">Back to menu</button>
+    <header id="header" class="hidden">
+      <div class="header-title">Parkour Hobo Course Builder</div>
+      <div class="header-controls">
+        <input
+          type="text"
+          id="course-name"
+          placeholder="Course Name"
+          maxlength="20"
+        />
+        <button id="save-course-btn">Save Course</button>
+        <button id="export-code-btn">Export Code</button>
+        <button id="reset-btn">Back to menu</button>
+      </div>
+      <div id="block-counter">Blocks Used: 0 / 0</div>
+    </header>
+
+    <div id="side-menu" class="hidden">
+      <button class="block-btn" data-block="floor">Floor</button>
+      <button class="block-btn" data-block="smallPlatform">
+        Small Platform
+      </button>
+      <button class="block-btn" data-block="largePlatform">
+        Large Platform
+      </button>
+      <button class="block-btn" data-block="garbageBag">Garbage Bag</button>
+      <button class="block-btn" data-block="rooftop">Rooftop</button>
+      <button class="block-btn" data-block="building">City Building</button>
+      <button class="block-btn" data-block="bridge">Bridge</button>
+      <button class="block-btn" data-block="killZone">Kill Zone</button>
+      <button class="block-btn" data-block="killZoneLarge">
+        Kill Zone Large
+      </button>
+      <button class="block-btn" data-block="start">Start</button>
+      <button class="block-btn" data-block="finish">Finish</button>
     </div>
-    <div id="block-counter">Blocks Used: 0 / 0</div>
-  </header>
 
-  <div id="side-menu" class="hidden">
-    <button class="block-btn" data-block="floor">Floor</button>
-    <button class="block-btn" data-block="smallPlatform">Small Platform</button>
-    <button class="block-btn" data-block="largePlatform">Large Platform</button>
-    <button class="block-btn" data-block="garbageBag">Garbage Bag</button>
-    <button class="block-btn" data-block="rooftop">Rooftop</button>
-    <button class="block-btn" data-block="building">City Building</button>
-    <button class="block-btn" data-block="bridge">Bridge</button>
-    <button class="block-btn" data-block="killZone">Kill Zone</button>
-    <button class="block-btn" data-block="killZoneLarge">Kill Zone Large</button>
-    <button class="block-btn" data-block="start">Start</button>
-    <button class="block-btn" data-block="finish">Finish</button>
-  </div>
-
-  <div id="export-modal" class="modal hidden">
-    <div class="modal-content">
-      <h2>Export Code</h2>
-      <textarea id="export-code" readonly></textarea>
-      <div class="modal-actions">
-        <button id="copy-export-code">Copy to Clipboard</button>
-        <button id="close-export-modal">Close</button>
+    <div id="export-modal" class="modal hidden">
+      <div class="modal-content">
+        <h2>Export Code</h2>
+        <textarea id="export-code" readonly></textarea>
+        <div class="modal-actions">
+          <button id="copy-export-code">Copy to Clipboard</button>
+          <button id="close-export-modal">Close</button>
+        </div>
       </div>
     </div>
-  </div>
 
-  <canvas id="threejs-canvas"></canvas>
-  
-  <div id="toolbar" class="toolbar hidden">
-    <div class="tool-btn" data-tool="build" data-shortcut="1" title="Build (1)">
-      <div class="tool-icon">🧱</div>
-      <div class="tool-label">Build</div>
+    <canvas id="threejs-canvas"></canvas>
+
+    <div id="toolbar" class="toolbar hidden">
+      <div
+        class="tool-btn"
+        data-tool="build"
+        data-shortcut="1"
+        title="Build (1)"
+      >
+        <div class="tool-icon">🧱</div>
+        <div class="tool-label">Build</div>
+      </div>
+      <div
+        class="tool-btn"
+        data-tool="delete"
+        data-shortcut="2"
+        title="Delete (2)"
+      >
+        <div class="tool-icon">🗑️</div>
+        <div class="tool-label">Delete</div>
+      </div>
+      <div
+        class="tool-btn"
+        data-tool="rotate"
+        data-shortcut="3"
+        title="Rotate (3)"
+      >
+        <div class="tool-icon">🔄</div>
+        <div class="tool-label">Rotate</div>
+      </div>
+      <div
+        class="tool-btn"
+        data-tool="player"
+        data-shortcut="b"
+        title="Player Mode (B)"
+      >
+        <div class="tool-icon">👤</div>
+        <div class="tool-label">Player</div>
+      </div>
     </div>
-    <div class="tool-btn" data-tool="delete" data-shortcut="2" title="Delete (2)">
-      <div class="tool-icon">🗑️</div>
-      <div class="tool-label">Delete</div>
+
+    <div id="player-controls" class="hidden">
+      <button id="reset-player-btn" class="player-btn">Reset Position</button>
     </div>
-    <div class="tool-btn" data-tool="rotate" data-shortcut="3" title="Rotate (3)">
-      <div class="tool-icon">🔄</div>
-      <div class="tool-label">Rotate</div>
-    </div>
-    <div class="tool-btn" data-tool="player" data-shortcut="b" title="Player Mode (B)">
-      <div class="tool-icon">👤</div>
-      <div class="tool-label">Player</div>
-    </div>
-  </div>
-  
-  <div id="player-controls" class="hidden">
-    <button id="reset-player-btn" class="player-btn">Reset Position</button>
-  </div>
-  
-  <script type="module" src="./src/main.ts"></script>
-</body>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
 </html>

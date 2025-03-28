@@ -1,0 +1,25 @@
+// webroot/tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ESNext", // Target modern browsers
+    "module": "ESNext", // Use ES modules
+    "lib": ["ESNext", "DOM", "DOM.Iterable"], // *** ADD "DOM" and "DOM.Iterable" ***
+    "moduleResolution": "bundler", // Use modern resolution
+    "esModuleInterop": true, // Helps with CJS/ESM interop if needed
+    "forceConsistentCasingInFileNames": true,
+    "strict": true, // Keep strict checks
+    "skipLibCheck": true,
+    "outDir": "./dist", // Specify output (though Vite handles the final bundle)
+    "rootDir": "./src", // Specify source root
+    "baseUrl": ".", // Helps resolve paths
+    "paths": {
+      // Add paths if needed for complex imports, e.g.:
+      // "@/components/*": ["src/components/*"]
+    },
+     "sourceMap": true, // Generate source maps
+     "allowImportingTsExtensions": false, // Set to false, enforce .js in imports
+     "noEmit": true // IMPORTANT: Let Vite handle the actual bundling/emitting
+  },
+  "include": ["src/**/*"], // Only include webroot's source
+  "exclude": ["node_modules", "dist"] // Exclude node_modules and output
+}
