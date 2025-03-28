@@ -1,4 +1,4 @@
-import { Course, Template } from './types';
+import { Course, Template, AtmosphereSettings } from './types';
 import { BlockFactory } from './blockFactory';
 
 export class CourseManager {
@@ -62,7 +62,8 @@ export class CourseManager {
         rotation: block.rotation
       })),
       startPosition: course.startPosition,
-      finishPosition: course.finishPosition
+      finishPosition: course.finishPosition,
+      atmosphere: course.atmosphere // Save atmosphere settings
     };
   }
 
@@ -81,7 +82,9 @@ export class CourseManager {
         );
       }),
       startPosition: courseData.startPosition,
-      finishPosition: courseData.finishPosition
+      finishPosition: courseData.finishPosition,
+      // Use the stored atmosphere settings, or default to day mode if none exist
+      atmosphere: courseData.atmosphere || { isDayMode: true }
     };
     
     return course;
@@ -99,7 +102,8 @@ export class CourseManager {
       template: templateName,
       blocks: [],
       startPosition: { x: 0, y: 0, z: 0 },
-      finishPosition: { x: 0, y: 0, z: 0 }
+      finishPosition: { x: 0, y: 0, z: 0 },
+      atmosphere: { isDayMode: true } // Default to day mode
     };
     
     this.courses.push(course);
@@ -202,5 +206,14 @@ export class CourseManager {
   
   private generateId(): string {
     return Math.random().toString(36).substring(2, 15);
+  }
+  
+  // Add method to update atmosphere settings
+  public updateAtmosphere(courseId: string, settings: AtmosphereSettings): void {
+    const course = this.getCourse(courseId);
+    if (course) {
+      course.atmosphere = settings;
+      this.saveCourse(course);
+    }
   }
 }

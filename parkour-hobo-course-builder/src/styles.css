@@ -659,4 +659,39 @@ body, html {
   to { transform: scale(1.05); }
 }
 
+/* Atmosphere Toggle Button */
+.atmosphere-btn {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.atmosphere-btn:hover {
+  background-color: #3e8e41;
+}
+
+.atmosphere-btn.night-mode {
+  background-color: #4d64ff; /* Brighter blue (was #1a237e) */
+}
+
+.atmosphere-btn.night-mode:hover {
+  background-color: #4d64ff; /* Brighter blue hover (was #0d1642) */
+}
+
+/* Responsive adjustments for atmosphere button */
+@media (max-width: 768px) {
+  .atmosphere-btn {
+    font-size: 10px;
+    padding: 5px;
+  }
+}
+
 

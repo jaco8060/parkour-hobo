@@ -4,7 +4,7 @@ import { Player } from './player';
 import { BlockFactory } from './blockFactory';
 import { CourseManager } from './courseManager';
 import { UI } from './ui';
-import { Course, Vector3, Block, PlayerControls, DEFAULT_CONTROLS, BlockDefinition } from './types';
+import { Course, Vector3, Block, PlayerControls, DEFAULT_CONTROLS, BlockDefinition, AtmosphereSettings } from './types';
 import './styles.css';
 
 class ParkourHoboCourseBuilder {
@@ -52,6 +52,13 @@ class ParkourHoboCourseBuilder {
   // Add this property to the class
   private placeholderHeightOffset: number = 0;
 
+  // Add these properties to the ParkourHoboCourseBuilder class
+  private skyBox: THREE.Mesh | null = null;
+  private clouds: THREE.Group | null = null;
+  private sunMoon: THREE.Mesh | null = null;
+  private ambientLight: THREE.AmbientLight;
+  private directionalLight: THREE.DirectionalLight;
+
   constructor() {
     // Initialize components
     this.blockFactory = new BlockFactory();
@@ -85,12 +92,12 @@ class ParkourHoboCourseBuilder {
     this.pointer = new THREE.Vector2();
     
     // Set up lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    this.scene.add(ambientLight);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    this.scene.add(this.ambientLight);
     
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(10, 20, 10);
-    this.scene.add(directionalLight);
+    this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    this.directionalLight.position.set(10, 20, 10);
+    this.scene.add(this.directionalLight);
     
     // Add grid helper
     this.gridHelper = new THREE.GridHelper(50, 50);
@@ -133,6 +140,11 @@ class ParkourHoboCourseBuilder {
       this.ui.showBuilderMode();
       this.isBuilderMode = true;
       this.updateBlockCounter();
+      
+      // Add this line to initialize the atmosphere when creating a new course
+      if (this.currentCourse) {
+        this.setupAtmosphere(this.currentCourse.atmosphere);
+      }
     });
     
     this.ui.setOnLoadCourse((courseId: string) => {
@@ -144,6 +156,11 @@ class ParkourHoboCourseBuilder {
         this.ui.showBuilderMode();
         this.isBuilderMode = true;
         this.updateBlockCounter();
+        
+        // Update atmosphere toggle in UI
+        if (this.currentCourse) {
+          this.ui.updateAtmosphereToggle(this.currentCourse.atmosphere.isDayMode);
+        }
       }
     });
     
@@ -237,6 +254,11 @@ class ParkourHoboCourseBuilder {
         }
         this.ui.displayToast('Player position reset!', 1500);
       }
+    });
+
+    // Set up atmosphere toggle callback
+    this.ui.setOnToggleAtmosphere(() => {
+      this.toggleAtmosphere();
     });
   }
 
@@ -602,6 +624,9 @@ class ParkourHoboCourseBuilder {
       this.scene.add(newBlock.mesh!);
       courseCopy.blocks.push(newBlock);
     });
+    
+    // Set up atmosphere
+    this.setupAtmosphere(courseCopy.atmosphere);
     
     return courseCopy;
   }
@@ -1247,6 +1272,156 @@ class ParkourHoboCourseBuilder {
     
     // Select build tool by default
     this.setTool('build');
+  }
+
+  private toggleAtmosphere() {
+    if (this.currentCourse) {
+      const newSettings = {
+        isDayMode: !this.currentCourse.atmosphere.isDayMode
+      };
+      
+      this.currentCourse.atmosphere = newSettings;
+      this.setupAtmosphere(newSettings);
+      
+      // Update the course in the manager
+      this.courseManager.updateAtmosphere(this.currentCourse.id, newSettings);
+      
+      // Update UI to reflect current atmosphere state
+      this.ui.updateAtmosphereToggle(newSettings.isDayMode);
+    }
+  }
+
+  private setupAtmosphere(settings: AtmosphereSettings) {
+    // Remove existing atmosphere elements
+    if (this.skyBox) this.scene.remove(this.skyBox);
+    if (this.clouds) this.scene.remove(this.clouds);
+    if (this.sunMoon) this.scene.remove(this.sunMoon);
+    
+    // Set background color based on day/night mode
+    if (settings.isDayMode) {
+      this.scene.background = new THREE.Color(0x87CEEB); // Light blue sky
+      this.createDaytimeAtmosphere();
+    } else {
+      this.scene.background = new THREE.Color(0x6666FF); // Brighter blue night sky (was 0x0B1026)
+      this.createNighttimeAtmosphere();
+    }
+    
+    // Update lights based on day/night mode
+    this.updateLighting(settings);
+  }
+
+  private createDaytimeAtmosphere() {
+    // Create sun
+    const sunGeometry = new THREE.SphereGeometry(5, 32, 32);
+    const sunMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0xFFFF00,
+      transparent: true,
+      opacity: 0.8
+    });
+    this.sunMoon = new THREE.Mesh(sunGeometry, sunMaterial);
+    this.sunMoon.position.set(50, 100, -100);
+    this.scene.add(this.sunMoon);
+    
+    // Create clouds
+    this.clouds = new THREE.Group();
+    
+    // Create several clouds at different positions
+    for (let i = 0; i < 15; i++) {
+      const cloud = this.createCloud(0xFFFFFF, 0.3); // White, semi-transparent
+      
+      // Position clouds randomly in the sky, but lower than before
+      cloud.position.set(
+        (Math.random() - 0.5) * 200,
+        25 + Math.random() * 20,  // Lower position (was 50 + random * 30)
+        (Math.random() - 0.5) * 200
+      );
+      
+      this.clouds.add(cloud);
+    }
+    
+    this.scene.add(this.clouds);
+  }
+
+  private createNighttimeAtmosphere() {
+    // Create moon
+    const moonGeometry = new THREE.SphereGeometry(5, 32, 32);
+    const moonMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0xDDDDDD,
+      transparent: true,
+      opacity: 0.8
+    });
+    this.sunMoon = new THREE.Mesh(moonGeometry, moonMaterial);
+    this.sunMoon.position.set(50, 100, -100);
+    this.scene.add(this.sunMoon);
+    
+    // Create darker clouds
+    this.clouds = new THREE.Group();
+    
+    // Create several clouds at different positions
+    for (let i = 0; i < 10; i++) {
+      const cloud = this.createCloud(0x777777, 0.5); // Slightly lighter gray, more opaque
+      
+      // Position clouds randomly in the sky, but lower than before
+      cloud.position.set(
+        (Math.random() - 0.5) * 200,
+        25 + Math.random() * 20,  // Lower position (was 50 + random * 30)
+        (Math.random() - 0.5) * 200
+      );
+      
+      this.clouds.add(cloud);
+    }
+    
+    this.scene.add(this.clouds);
+  }
+
+  private createCloud(color: number, opacity: number): THREE.Group {
+    const cloudGroup = new THREE.Group();
+    
+    // Create several overlapping spheres to form a cloud
+    const sphereCount = 5 + Math.floor(Math.random() * 5);
+    const baseSize = 3 + Math.random() * 3;
+    
+    for (let i = 0; i < sphereCount; i++) {
+      const sphereGeometry = new THREE.SphereGeometry(
+        baseSize * (0.6 + Math.random() * 0.4), 
+        8, 8
+      );
+      const sphereMaterial = new THREE.MeshLambertMaterial({
+        color: color,
+        transparent: true,
+        opacity: opacity
+      });
+      const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+      
+      // Arrange spheres in a roughly circular pattern
+      const angle = (i / sphereCount) * Math.PI * 2;
+      const radius = baseSize * 0.8;
+      sphere.position.set(
+        Math.cos(angle) * radius,
+        (Math.random() - 0.5) * baseSize * 0.5,
+        Math.sin(angle) * radius
+      );
+      
+      cloudGroup.add(sphere);
+    }
+    
+    return cloudGroup;
+  }
+
+  private updateLighting(settings: AtmosphereSettings) {
+    if (settings.isDayMode) {
+      // Bright daylight settings
+      this.ambientLight.intensity = 0.5;
+      this.directionalLight.intensity = 0.8;
+      this.directionalLight.color.set(0xFFFFFF);
+      this.directionalLight.position.set(10, 20, 10);
+    } else {
+      // Brighter night lighting settings (increased from previous values)
+      this.ambientLight.intensity = 0.35;  // Increased from 0.2
+      this.directionalLight.intensity = 0.45;  // Increased from 0.3
+      this.directionalLight.color.set(0xCCDDFF); // Slightly bluer tint for moonlight
+      this.directionalLight.position.set(-10, 20, -10);
+    }
   }
 }
 

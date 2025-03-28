@@ -35,6 +35,10 @@ export interface Block {
   originalMaterials?: THREE.Material[];
 }
 
+export interface AtmosphereSettings {
+  isDayMode: boolean;  // true for day, false for night
+}
+
 export interface Course {
   id: string;
   name: string;
@@ -42,6 +46,7 @@ export interface Course {
   blocks: Block[];
   startPosition: Vector3;
   finishPosition: Vector3;
+  atmosphere: AtmosphereSettings; // Add atmosphere settings
 }
 
 export interface Template {

@@ -32,6 +32,7 @@ export class UI {
   private onUpdateControls: ((controls: Partial<PlayerControls>) => void) | undefined;
   private toastTimeout: number | null = null;
   private resetPlayerCallback: (() => void) | null = null;
+  private atmosphereBtn: HTMLElement | null = null;
 
   constructor(courseManager: CourseManager) {
     this.courseManager = courseManager;
@@ -54,6 +55,7 @@ export class UI {
     this.setupEventListeners();
     this.setupExportModalEvents();
     this.setupToolbar();
+    this.setupAtmosphereToggle();
 
     // Add this to initialize the reset button click handler
     const resetPlayerBtn = document.getElementById('reset-player-btn');
@@ -836,5 +838,42 @@ export class UI {
   // Add this new method
   setOnResetPlayer(callback: () => void) {
     this.resetPlayerCallback = callback;
+  }
+
+  private setupAtmosphereToggle() {
+    // Create atmosphere toggle button
+    this.atmosphereBtn = document.createElement('button');
+    this.atmosphereBtn.id = 'atmosphere-toggle';
+    this.atmosphereBtn.classList.add('atmosphere-btn');
+    this.atmosphereBtn.innerHTML = '☀️ Day Mode';
+    this.atmosphereBtn.title = 'Toggle between day and night mode';
+    
+    // Add event listener
+    this.atmosphereBtn.addEventListener('click', () => {
+      if (this.onToggleAtmosphere) {
+        this.onToggleAtmosphere();
+      }
+    });
+    
+    // Add to header controls
+    const headerControls = document.querySelector('.header-controls');
+    if (headerControls) {
+      headerControls.appendChild(this.atmosphereBtn);
+    }
+  }
+
+  // Add method to update atmosphere button state
+  public updateAtmosphereToggle(isDayMode: boolean) {
+    if (this.atmosphereBtn) {
+      this.atmosphereBtn.innerHTML = isDayMode ? '☀️ Day Mode' : '🌙 Night Mode';
+      this.atmosphereBtn.classList.toggle('night-mode', !isDayMode);
+    }
+  }
+
+  // Add callback for atmosphere toggle
+  private onToggleAtmosphere: (() => void) | null = null;
+
+  public setOnToggleAtmosphere(callback: () => void) {
+    this.onToggleAtmosphere = callback;
   }
 }
