@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Vector3, PlayerControls, DEFAULT_CONTROLS } from './types';
+import { Vector3, PlayerControls, DEFAULT_CONTROLS, Block } from './types';
 
 export class Player {
   mesh: THREE.Group;
@@ -29,6 +29,20 @@ export class Player {
   private cameraTargetOffset: THREE.Vector3 = new THREE.Vector3(0, 0.5, 0);
   private playerDirection: THREE.Vector3 = new THREE.Vector3(0, 0, -1);
   private rotationAngle: number = 0;
+  
+  // Physics properties
+  private isGrounded: boolean = false;
+  private playerHeight: number = 1.5; // Total height of player
+  private playerWidth: number = 0.5;  // Width of player for collision
+  private collisionBlocks: Block[] = [];
+  private verticalVelocity: number = 0;
+  private jumpForce: number = 8;
+  private fallSpeed: number = 0;
+  private terminalVelocity: number = 20;
+  
+  // Box for collision
+  private collisionBox: THREE.Box3;
+  private collisionOffsetY: number = 0.75; // Offset from center for the collision box
 
   constructor(position: Vector3, camera: THREE.PerspectiveCamera) {
     this.mesh = new THREE.Group();
@@ -75,6 +89,10 @@ export class Player {
     // Set initial position
     this.mesh.position.set(position.x, position.y, position.z);
     
+    // Initialize collision box
+    this.collisionBox = new THREE.Box3();
+    this.updateCollisionBox();
+    
     // Initialize player direction and update camera position
     this.updateCamera();
     
@@ -91,7 +109,10 @@ export class Player {
     window.addEventListener('keyup', this.keyupHandler);
   }
 
-  update(delta: number, time: number) {
+  update(delta: number, time: number, blocks: Block[]) {
+    // Store blocks for collision detection
+    this.collisionBlocks = blocks;
+    
     // Check if player is moving based on key states
     this.isMoving = this.keys[this.controls.forward] || 
                     this.keys[this.controls.backward] || 
@@ -100,52 +121,182 @@ export class Player {
     
     // Handle rotation and movement
     this.handleRotation(delta);
+    
+    // Apply physics
+    this.applyPhysics(delta);
+    
+    // Handle movement with collision detection
     this.handleMovement(delta);
     
     // Update camera position to follow player
     this.updateCamera();
     
-    // Idle animation
-    if (!this.isMoving && !this.isJumping) {
+    // Idle animation only when grounded and not moving
+    if (!this.isMoving && this.isGrounded) {
       this.mesh.position.y += Math.sin(time * 2) * 0.005;
     }
 
-    // Running animation
-    if (this.isMoving && !this.isJumping) {
+    // Running animation only when grounded
+    if (this.isMoving && this.isGrounded) {
       this.leftLeg.rotation.x = Math.sin(time * 10) * 0.5;
       this.rightLeg.rotation.x = Math.sin(time * 10 + Math.PI) * 0.5;
       this.leftArm.rotation.x = Math.sin(time * 10 + Math.PI) * 0.25;
       this.rightArm.rotation.x = Math.sin(time * 10) * 0.25;
     }
 
-    // Jump animation
-    if (this.isJumping) {
-      this.jumpTime += delta;
+    // Jumping pose when in air
+    if (!this.isGrounded) {
+      // Set legs and arms for jump
+      this.leftLeg.rotation.x = -0.3;
+      this.rightLeg.rotation.x = -0.3;
+      this.leftArm.rotation.x = -0.6;
+      this.rightArm.rotation.x = -0.6;
+    }
+    
+    // Update the collision box
+    this.updateCollisionBox();
+  }
+  
+  private applyPhysics(delta: number) {
+    // Apply gravity
+    this.verticalVelocity -= this.gravity * delta;
+    
+    // Limit fall speed to terminal velocity
+    if (this.verticalVelocity < -this.terminalVelocity) {
+      this.verticalVelocity = -this.terminalVelocity;
+    }
+    
+    // Move player vertically
+    this.mesh.position.y += this.verticalVelocity * delta;
+    
+    // Check collision with ground and blocks
+    this.checkGroundCollision();
+    this.checkBlockCollisions();
+    
+    // Update collision box after movement
+    this.updateCollisionBox();
+  }
+  
+  private checkGroundCollision() {
+    // Check if player is below ground level
+    if (this.mesh.position.y < 0) {
+      this.mesh.position.y = 0;
+      this.verticalVelocity = 0;
+      this.isGrounded = true;
       
-      // Jump up and then down
-      const jumpProgress = this.jumpTime / this.jumpDuration;
-      
-      if (jumpProgress < 1) {
-        const height = Math.sin(jumpProgress * Math.PI) * this.jumpHeight;
-        this.mesh.position.y = height;
-        
-        // Set legs and arms for jump
-        this.leftLeg.rotation.x = -0.3;
-        this.rightLeg.rotation.x = -0.3;
-        this.leftArm.rotation.x = -0.6;
-        this.rightArm.rotation.x = -0.6;
-      } else {
-        this.mesh.position.y = 0;
-        this.isJumping = false;
-        this.jumpTime = 0;
-        
-        // Reset legs and arms
+      // Reset legs and arms to normal position
+      if (this.isGrounded && !this.isMoving) {
         this.leftLeg.rotation.x = 0;
         this.rightLeg.rotation.x = 0;
         this.leftArm.rotation.x = 0;
         this.rightArm.rotation.x = 0;
       }
     }
+  }
+  
+  private checkBlockCollisions() {
+    this.isGrounded = false; // Reset grounded state
+    
+    // Get the bottom center of the player for better collision
+    const playerBottom = new THREE.Vector3(
+      this.mesh.position.x,
+      this.mesh.position.y - this.collisionOffsetY, // Bottom of player
+      this.mesh.position.z
+    );
+    
+    // Check collision with each block
+    for (const block of this.collisionBlocks) {
+      if (!block.mesh) continue;
+      
+      // Create a box3 for the block
+      const blockBox = new THREE.Box3().setFromObject(block.mesh);
+      
+      // Check if player's collision box intersects with block
+      if (this.collisionBox.intersectsBox(blockBox)) {
+        // Get the intersection information
+        const playerMinY = this.collisionBox.min.y;
+        const blockMaxY = blockBox.max.y;
+        const blockMinY = blockBox.min.y;
+        
+        // Check if player is above the block (landing)
+        if (this.verticalVelocity < 0 && playerBottom.y > blockMaxY - 0.2) {
+          // Land on top of the block
+          this.mesh.position.y = blockMaxY + this.collisionOffsetY;
+          this.verticalVelocity = 0;
+          this.isGrounded = true;
+          
+          // Reset legs and arms to normal position if not moving
+          if (!this.isMoving) {
+            this.leftLeg.rotation.x = 0;
+            this.rightLeg.rotation.x = 0;
+            this.leftArm.rotation.x = 0;
+            this.rightArm.rotation.x = 0;
+          }
+        } 
+        // Check for side/bottom collisions (prevent going through blocks)
+        else {
+          // Create a small box representing the player's feet
+          const feetBox = new THREE.Box3().setFromObject(this.mesh);
+          feetBox.min.y = this.collisionBox.min.y;
+          feetBox.max.y = this.collisionBox.min.y + 0.1;
+          
+          // Only do horizontal collision if we're not standing on the block
+          if (!feetBox.intersectsBox(blockBox)) {
+            // Get horizontal position before collision
+            const prevPosition = this.mesh.position.clone();
+            
+            // Calculate the penetration depth in each direction
+            const rightPenetration = this.collisionBox.max.x - blockBox.min.x;
+            const leftPenetration = blockBox.max.x - this.collisionBox.min.x;
+            const frontPenetration = this.collisionBox.max.z - blockBox.min.z;
+            const backPenetration = blockBox.max.z - this.collisionBox.min.z;
+            
+            // Find smallest penetration to push out
+            const minPenetration = Math.min(
+              rightPenetration, leftPenetration, 
+              frontPenetration, backPenetration
+            );
+            
+            // Push player out of the block based on the smallest penetration
+            if (minPenetration === rightPenetration) {
+              this.mesh.position.x = blockBox.min.x - this.playerWidth / 2;
+            } else if (minPenetration === leftPenetration) {
+              this.mesh.position.x = blockBox.max.x + this.playerWidth / 2;
+            } else if (minPenetration === frontPenetration) {
+              this.mesh.position.z = blockBox.min.z - this.playerWidth / 2;
+            } else if (minPenetration === backPenetration) {
+              this.mesh.position.z = blockBox.max.z + this.playerWidth / 2;
+            }
+            
+            // If we're moving up and hit the bottom of a block, stop upward motion
+            if (this.verticalVelocity > 0 && this.collisionBox.max.y > blockMinY && 
+                prevPosition.y + this.playerHeight < blockMinY) {
+              this.verticalVelocity = 0;
+            }
+          }
+        }
+      }
+    }
+    
+    // Update collision box after corrections
+    this.updateCollisionBox();
+  }
+  
+  private updateCollisionBox() {
+    // Create a slightly smaller box than the visual model for better gameplay
+    const halfWidth = this.playerWidth * 0.4;
+    
+    this.collisionBox.min.set(
+      this.mesh.position.x - halfWidth,
+      this.mesh.position.y - this.collisionOffsetY,
+      this.mesh.position.z - halfWidth
+    );
+    
+    this.collisionBox.max.set(
+      this.mesh.position.x + halfWidth,
+      this.mesh.position.y + this.playerHeight - this.collisionOffsetY,
+      this.mesh.position.z + halfWidth
+    );
   }
   
   private handleRotation(delta: number) {
@@ -175,16 +326,75 @@ export class Player {
   
   private handleMovement(delta: number) {
     const distance = this.speed * delta;
+    const previousPosition = this.mesh.position.clone();
     
     // Move forward/backward in the direction player is facing
     if (this.keys[this.controls.forward]) {
       this.mesh.position.x += this.playerDirection.x * distance;
       this.mesh.position.z += this.playerDirection.z * distance;
+      
+      // Update collision box
+      this.updateCollisionBox();
+      
+      // Check for collisions after movement
+      let hasCollision = false;
+      for (const block of this.collisionBlocks) {
+        if (!block.mesh) continue;
+        
+        const blockBox = new THREE.Box3().setFromObject(block.mesh);
+        if (this.collisionBox.intersectsBox(blockBox)) {
+          // Create a small box representing the player's feet
+          const feetBox = new THREE.Box3().setFromObject(this.mesh);
+          feetBox.min.y = this.collisionBox.min.y;
+          feetBox.max.y = this.collisionBox.min.y + 0.1;
+          
+          // If we're not standing on this block
+          if (!feetBox.intersectsBox(blockBox)) {
+            hasCollision = true;
+            break;
+          }
+        }
+      }
+      
+      // If there's a collision, revert the movement
+      if (hasCollision) {
+        this.mesh.position.x = previousPosition.x;
+        this.mesh.position.z = previousPosition.z;
+      }
     }
     
     if (this.keys[this.controls.backward]) {
       this.mesh.position.x -= this.playerDirection.x * distance;
       this.mesh.position.z -= this.playerDirection.z * distance;
+      
+      // Update collision box
+      this.updateCollisionBox();
+      
+      // Check for collisions after movement
+      let hasCollision = false;
+      for (const block of this.collisionBlocks) {
+        if (!block.mesh) continue;
+        
+        const blockBox = new THREE.Box3().setFromObject(block.mesh);
+        if (this.collisionBox.intersectsBox(blockBox)) {
+          // Create a small box representing the player's feet
+          const feetBox = new THREE.Box3().setFromObject(this.mesh);
+          feetBox.min.y = this.collisionBox.min.y;
+          feetBox.max.y = this.collisionBox.min.y + 0.1;
+          
+          // If we're not standing on this block
+          if (!feetBox.intersectsBox(blockBox)) {
+            hasCollision = true;
+            break;
+          }
+        }
+      }
+      
+      // If there's a collision, revert the movement
+      if (hasCollision) {
+        this.mesh.position.x = previousPosition.x;
+        this.mesh.position.z = previousPosition.z;
+      }
     }
   }
   
@@ -211,9 +421,11 @@ export class Player {
   }
 
   jump() {
-    if (!this.isJumping) {
+    // Only allow jumping if player is on ground
+    if (this.isGrounded) {
+      this.isGrounded = false;
+      this.verticalVelocity = this.jumpForce;
       this.isJumping = true;
-      this.jumpTime = 0;
     }
   }
 
@@ -244,11 +456,18 @@ export class Player {
 
   setPosition(position: Vector3) {
     this.mesh.position.set(position.x, position.y, position.z);
+    // Reset physics
+    this.verticalVelocity = 0;
+    this.isGrounded = false;
+    
     // Reset rotation when position is explicitly set
     this.rotationAngle = 0;
     this.mesh.rotation.y = 0;
     this.playerDirection.set(0, 0, -1);
     this.updateCamera();
+    
+    // Update collision box
+    this.updateCollisionBox();
   }
   
   // Control management methods

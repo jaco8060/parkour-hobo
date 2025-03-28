@@ -205,7 +205,7 @@ export class UI {
       if (tool === 'select') {
         this.showToast('Select Mode: Click to select a block<br>R: Rotate selected block<br>Delete: Remove selected block<br>Esc: Cancel selection');
       } else if (tool === 'build') {
-        this.showToast('Build Mode: Click to place block<br>R: Rotate before placing');
+        this.showToast('Build Mode: Click to place block<br>R: Rotate before placing<br>Q/E: Lower/Raise block placement height');
       } else if (tool === 'delete') {
         this.showToast('Delete Mode: Click to delete block');
       } else if (tool === 'player') {
@@ -301,6 +301,11 @@ export class UI {
       }
       this.toastTimeout = null;
     }, duration);
+  }
+
+  // Public method to allow external access to show toast messages
+  public displayToast(message: string, duration: number = 3000) {
+    this.showToast(message, duration);
   }
 
   setOnNewCourse(callback: (templateName: string) => void) {

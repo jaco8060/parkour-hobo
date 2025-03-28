@@ -4,7 +4,7 @@ import { Player } from './player';
 import { BlockFactory } from './blockFactory';
 import { CourseManager } from './courseManager';
 import { UI } from './ui';
-import { Course, Vector3, Block, PlayerControls, DEFAULT_CONTROLS } from './types';
+import { Course, Vector3, Block, PlayerControls, DEFAULT_CONTROLS, BlockDefinition } from './types';
 import './styles.css';
 
 class ParkourHoboCourseBuilder {
@@ -48,6 +48,9 @@ class ParkourHoboCourseBuilder {
   // Add this property to the class with proper initialization
   private toast: HTMLDivElement | null = null;
   private selectedBlockTooltip: HTMLDivElement | null = null;
+
+  // Add this property to the class
+  private placeholderHeightOffset: number = 0;
 
   constructor() {
     // Initialize components
@@ -367,6 +370,20 @@ class ParkourHoboCourseBuilder {
         if (this.selectedBlock) {
           this.clearSelection();
         }
+      } else if (event.key === 'e' || event.key === 'E') {
+        // Raise the placeholder height in builder mode
+        if (this.isBuilderMode && this.currentTool === 'build' && this.placeholderMesh) {
+          this.placeholderHeightOffset += 1;
+          this.updatePlaceholderPosition();
+          this.ui.displayToast(`Placeholder height: ${this.placeholderHeightOffset}`, 1500);
+        }
+      } else if (event.key === 'q' || event.key === 'Q') {
+        // Lower the placeholder height in builder mode
+        if (this.isBuilderMode && this.currentTool === 'build' && this.placeholderMesh) {
+          this.placeholderHeightOffset = Math.max(0, this.placeholderHeightOffset - 1);
+          this.updatePlaceholderPosition();
+          this.ui.displayToast(`Placeholder height: ${this.placeholderHeightOffset}`, 1500);
+        }
       }
       
       // Player controls - forward jump key event to player only in player mode
@@ -581,7 +598,9 @@ class ParkourHoboCourseBuilder {
     
     // Update player if in player mode
     if (!this.isBuilderMode && this.player) {
-      this.player.update(delta, time);
+      // Pass blocks for collision detection 
+      const blocks = this.currentCourse ? this.currentCourse.blocks : [];
+      this.player.update(delta, time, blocks);
     }
     
     // Render
@@ -594,6 +613,9 @@ class ParkourHoboCourseBuilder {
       this.scene.remove(this.placeholderMesh);
       this.placeholderMesh = null;
     }
+    
+    // Reset height offset when changing block type
+    this.placeholderHeightOffset = 0;
     
     // Create new placeholder if a block type is selected
     if (this.selectedBlockType && this.isBuilderMode) {
@@ -610,48 +632,126 @@ class ParkourHoboCourseBuilder {
   private updatePlaceholderPosition() {
     if (!this.placeholderMesh || !this.selectedBlockType) return;
     
-    // Get the intersection point on the grid
+    // Get the intersection point on the grid or any object in the scene
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const intersects = this.raycaster.intersectObjects(this.scene.children);
     
+    // Skip if no intersections are found
+    if (intersects.length === 0) return;
+    
+    // Get the first valid intersection
+    let validIntersection = null;
     for (const intersect of intersects) {
       // Skip the placeholder itself and its children
       if (intersect.object === this.placeholderMesh || 
-          (this.placeholderMesh instanceof THREE.Group && this.placeholderMesh.children.includes(intersect.object))) continue;
+          (this.placeholderMesh instanceof THREE.Group && this.placeholderMesh.children.includes(intersect.object))) {
+        continue;
+      }
       
-      // Calculate position (snap to grid)
-      const position = new THREE.Vector3().copy(intersect.point);
-      
-      // Round to nearest grid point to ensure proper alignment
-      position.x = Math.round(position.x);
-      position.z = Math.round(position.z);
-      
-      // Get block definition
-      const blockDef = this.blockFactory.getBlockDefinition(this.selectedBlockType);
-      
-      // Adjust Y position based on block height
-      position.y = blockDef.dimensions.y / 2;
-      
-      // Update placeholder position
-      this.placeholderMesh.position.copy(position);
-      
-      // Check if placement is valid
-      this.canPlaceBlock = this.isValidPlacement(position);
-      
-      // Use the factory to update the placeholder appearance
-      this.blockFactory.highlightPlaceholder(
-        this.selectedBlockType, 
-        this.placeholderMesh, 
-        this.canPlaceBlock
-      );
-      
-      // Set rotation of placeholder
-      this.placeholderMesh.rotation.y = THREE.MathUtils.degToRad(this.rotationAngle);
-      
-      return;
+      // Valid intersection found
+      validIntersection = intersect;
+      break;
     }
+    
+    if (!validIntersection) return;
+    
+    // Calculate position (snap to grid)
+    const position = new THREE.Vector3().copy(validIntersection.point);
+    
+    // Round to nearest grid point to ensure proper alignment
+    position.x = Math.round(position.x);
+    position.z = Math.round(position.z);
+    
+    // Get block definition
+    const blockDef = this.blockFactory.getBlockDefinition(this.selectedBlockType);
+    
+    // Check if we're placing on an existing block or the ground
+    const isExistingBlock = validIntersection.object !== this.gridHelper && 
+                           !(validIntersection.object instanceof THREE.GridHelper);
+    
+    if (isExistingBlock) {
+      // If we're placing on a block, adjust y position based on intersection point
+      // and add half of the new block's height for proper positioning
+      position.y = validIntersection.point.y + blockDef.dimensions.y / 2;
+      
+      // Check if we're placing on top or on the side of a block
+      // Calculate the normal of the face that was hit
+      const normal = validIntersection.face?.normal;
+      
+      if (normal) {
+        // Convert the normal to world space
+        const worldNormal = normal.clone().transformDirection(validIntersection.object.matrixWorld);
+        
+        // If the normal is pointing up (y is close to 1), we're placing on top
+        if (worldNormal.y > 0.5) {
+          // We're on top, use the above calculation
+        } else {
+          // We're on the side, position the block next to the existing one
+          // Move the block in the direction of the normal
+          const existingBlockDef = this.getBlockDefForObject(validIntersection.object);
+          if (existingBlockDef) {
+            // Calculate how much to move based on the block dimensions
+            const moveX = worldNormal.x * ((existingBlockDef.dimensions.x + blockDef.dimensions.x) / 2);
+            const moveZ = worldNormal.z * ((existingBlockDef.dimensions.z + blockDef.dimensions.z) / 2);
+            
+            // Apply the movement
+            position.x += moveX;
+            position.z += moveZ;
+            
+            // Set y to match the existing block's y level for side placement
+            // Get the y center of the existing block
+            const existingBlockY = validIntersection.object.position.y;
+            position.y = existingBlockY;
+          }
+        }
+      }
+    } else {
+      // We're placing on the ground grid
+      position.y = blockDef.dimensions.y / 2;
+    }
+    
+    // Apply height offset for manual adjustment (using Q/E keys)
+    position.y += this.placeholderHeightOffset;
+    
+    // Update placeholder position
+    this.placeholderMesh.position.copy(position);
+    
+    // Check if placement is valid
+    this.canPlaceBlock = this.isValidPlacement(position);
+    
+    // Use the factory to update the placeholder appearance
+    this.blockFactory.highlightPlaceholder(
+      this.selectedBlockType, 
+      this.placeholderMesh, 
+      this.canPlaceBlock
+    );
+    
+    // Set rotation of placeholder
+    this.placeholderMesh.rotation.y = THREE.MathUtils.degToRad(this.rotationAngle);
   }
   
+  // Helper method to get block definition for an object
+  private getBlockDefForObject(object: THREE.Object3D): BlockDefinition | null {
+    if (!this.currentCourse) return null;
+    
+    // Find the block that contains this object
+    let block = this.currentCourse.blocks.find(b => b.mesh === object);
+    
+    // If not found directly, check if it's a child of a group
+    if (!block) {
+      block = this.currentCourse.blocks.find(b => 
+        b.mesh instanceof THREE.Group && 
+        b.mesh.children.some(child => child === object)
+      );
+    }
+    
+    if (block) {
+      return this.blockFactory.getBlockDefinition(block.type);
+    }
+    
+    return null;
+  }
+
   private isValidPlacement(position: THREE.Vector3): boolean {
     if (!this.currentCourse || !this.selectedBlockType) return false;
     
@@ -675,20 +775,77 @@ class ParkourHoboCourseBuilder {
       return false;
     }
     
+    // Create a box for the new block
+    const newBlockBox = new THREE.Box3();
+    const halfWidth = blockDef.dimensions.x / 2;
+    const halfHeight = blockDef.dimensions.y / 2;
+    const halfDepth = blockDef.dimensions.z / 2;
+    
+    newBlockBox.min.set(
+      position.x - halfWidth * 0.9, // Slightly reduce collision size for better stacking
+      position.y - halfHeight * 0.9,
+      position.z - halfDepth * 0.9
+    );
+    
+    newBlockBox.max.set(
+      position.x + halfWidth * 0.9,
+      position.y + halfHeight * 0.9,
+      position.z + halfDepth * 0.9
+    );
+    
     // Check for collision with other blocks
     for (const block of this.currentCourse.blocks) {
-      if (block.mesh) {
-        const distance = new THREE.Vector3(
-          block.position.x, 
-          block.position.y, 
-          block.position.z
-        ).distanceTo(position);
+      if (!block.mesh) continue;
+      
+      // Create a box for the existing block
+      const existingBlockDef = this.blockFactory.getBlockDefinition(block.type);
+      const existingBlockBox = new THREE.Box3();
+      const exHalfWidth = existingBlockDef.dimensions.x / 2;
+      const exHalfHeight = existingBlockDef.dimensions.y / 2;
+      const exHalfDepth = existingBlockDef.dimensions.z / 2;
+      
+      existingBlockBox.min.set(
+        block.position.x - exHalfWidth * 0.9,
+        block.position.y - exHalfHeight * 0.9,
+        block.position.z - exHalfDepth * 0.9
+      );
+      
+      existingBlockBox.max.set(
+        block.position.x + exHalfWidth * 0.9,
+        block.position.y + exHalfHeight * 0.9,
+        block.position.z + exHalfDepth * 0.9
+      );
+      
+      // Check if boxes intersect
+      if (newBlockBox.intersectsBox(existingBlockBox)) {
+        // Now check if this is a valid stacking situation
         
-        // If blocks are too close (overlapping), prevent placement
-        // This is a simple collision check, you might want to improve it
-        const minDistance = (blockDef.dimensions.x + 
-                            this.blockFactory.getBlockDefinition(block.type).dimensions.x) / 2;
-        if (distance < minDistance * 0.8) {
+        // Calculate vertical overlap
+        const verticalOverlap = Math.min(
+          newBlockBox.max.y - existingBlockBox.min.y,
+          existingBlockBox.max.y - newBlockBox.min.y
+        );
+        
+        // Calculate horizontal overlap along X and Z
+        const xOverlap = Math.min(
+          newBlockBox.max.x - existingBlockBox.min.x,
+          existingBlockBox.max.x - newBlockBox.min.x
+        );
+        
+        const zOverlap = Math.min(
+          newBlockBox.max.z - existingBlockBox.min.z,
+          existingBlockBox.max.z - newBlockBox.min.z
+        );
+        
+        const xyArea = existingBlockDef.dimensions.x * existingBlockDef.dimensions.z;
+        const overlapArea = xOverlap * zOverlap;
+        
+        // Check if this is a stacking situation (small vertical overlap, significant horizontal overlap)
+        const isStacking = verticalOverlap < 0.3 * existingBlockDef.dimensions.y && 
+                          overlapArea > 0.2 * xyArea;
+        
+        // Allow stacking, but prevent true overlaps
+        if (!isStacking) {
           return false;
         }
       }
@@ -895,6 +1052,9 @@ class ParkourHoboCourseBuilder {
   public setTool(tool: string) {
     const previousTool = this.currentTool;
     this.currentTool = tool;
+    
+    // Reset height offset when changing tools
+    this.placeholderHeightOffset = 0;
     
     // Hide placeholder when not in build mode
     if (tool !== 'build' && this.placeholderMesh) {
