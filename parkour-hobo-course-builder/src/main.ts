@@ -43,6 +43,7 @@ class ParkourHoboCourseBuilder {
   // Add these properties to the ParkourHoboCourseBuilder class
   private currentTool: string = "build";
   private rotationAngle: number = 0;
+  private snapEnabled: boolean = true;
 
   // Add this property to the class
   private gridHelper: THREE.GridHelper;
@@ -66,6 +67,9 @@ class ParkourHoboCourseBuilder {
   private sunMoon: THREE.Mesh | null = null;
   private ambientLight: THREE.AmbientLight;
   private directionalLight: THREE.DirectionalLight;
+
+  // Add a new property to the class
+  private placementIndicator: THREE.ArrowHelper | null = null;
 
   constructor() {
     // Initialize components
@@ -108,7 +112,7 @@ class ParkourHoboCourseBuilder {
     this.scene.add(this.directionalLight);
 
     // Add grid helper
-    this.gridHelper = new THREE.GridHelper(50, 50);
+    this.gridHelper = new THREE.GridHelper(200, 200);
     this.scene.add(this.gridHelper);
 
     // Create a material for deletion highlighting
@@ -125,7 +129,7 @@ class ParkourHoboCourseBuilder {
       opacity: 0.7,
     });
 
-    // Set up UI callbacks
+    // Initialize UI elements
     this.setupUICallbacks();
 
     // Set up event listeners
@@ -278,6 +282,11 @@ class ParkourHoboCourseBuilder {
     // Set up atmosphere toggle callback
     this.ui.setOnToggleAtmosphere(() => {
       this.toggleAtmosphere();
+    });
+
+    // Set up snap mode toggle callback
+    this.ui.setOnToggleSnapMode(() => {
+      this.toggleSnapMode();
     });
   }
 
@@ -483,6 +492,10 @@ class ParkourHoboCourseBuilder {
             1500
           );
         }
+      } else if (event.key === "s" || event.key === "S") {
+        if (this.isBuilderMode) {
+          this.toggleSnapMode();
+        }
       }
 
       // Player controls - forward jump key event to player only in player mode
@@ -531,6 +544,12 @@ class ParkourHoboCourseBuilder {
       // Clear any selections when switching to player mode
       if (this.selectedBlock) {
         this.clearSelection();
+      }
+
+      // Clean up placement indicator when switching to player mode
+      if (this.placementIndicator) {
+        this.scene.remove(this.placementIndicator);
+        this.placementIndicator = null;
       }
 
       // Create player at start position
@@ -637,6 +656,12 @@ class ParkourHoboCourseBuilder {
     // Update block counter
     this.updateBlockCounter();
 
+    // Clear any placement indicator
+    if (this.placementIndicator) {
+      this.scene.remove(this.placementIndicator);
+      this.placementIndicator = null;
+    }
+    
     // Update placeholder validity (limits might have changed)
     this.updatePlaceholderPosition();
   }
@@ -819,6 +844,12 @@ class ParkourHoboCourseBuilder {
   private updatePlaceholderPosition() {
     if (!this.placeholderMesh || !this.selectedBlockType) return;
 
+    // Clear any existing placement indicator
+    if (this.placementIndicator) {
+      this.scene.remove(this.placementIndicator);
+      this.placementIndicator = null;
+    }
+
     // Get the intersection point on the grid or any object in the scene
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const intersects = this.raycaster.intersectObjects(this.scene.children);
@@ -845,69 +876,133 @@ class ParkourHoboCourseBuilder {
 
     if (!validIntersection) return;
 
-    // Calculate position (snap to grid)
-    const position = new THREE.Vector3().copy(validIntersection.point);
-
-    // Round to nearest grid point to ensure proper alignment
-    position.x = Math.round(position.x);
-    position.z = Math.round(position.z);
-
     // Get block definition
     const blockDef = this.blockFactory.getBlockDefinition(
       this.selectedBlockType
     );
+
+    // Calculate position
+    const position = new THREE.Vector3().copy(validIntersection.point);
 
     // Check if we're placing on an existing block or the ground
     const isExistingBlock =
       validIntersection.object !== this.gridHelper &&
       !(validIntersection.object instanceof THREE.GridHelper);
 
-    if (isExistingBlock) {
-      // If we're placing on a block, adjust y position based on intersection point
-      // and add half of the new block's height for proper positioning
-      position.y = validIntersection.point.y + blockDef.dimensions.y / 2;
+    if (isExistingBlock && this.snapEnabled) {
+      // SNAP MODE: We're placing on an existing block with snapping
+      
+      // Get the face normal that was hit
+      const normal = validIntersection.face?.normal.clone() || new THREE.Vector3(0, 1, 0);
+      
+      // Convert the normal to world space
+      const worldNormal = normal.transformDirection(validIntersection.object.matrixWorld);
+      
+      // Find the block that contains this object
+      let existingBlock = null;
+      let existingBlockDef = null;
+      
+      if (this.currentCourse) {
+        // Find the block that matches this mesh or is parent of this mesh
+        existingBlock = this.currentCourse.blocks.find((b) => b.mesh === validIntersection.object);
 
-      // Check if we're placing on top or on the side of a block
-      // Calculate the normal of the face that was hit
-      const normal = validIntersection.face?.normal;
-
-      if (normal) {
-        // Convert the normal to world space
-        const worldNormal = normal
-          .clone()
-          .transformDirection(validIntersection.object.matrixWorld);
-
-        // If the normal is pointing up (y is close to 1), we're placing on top
-        if (worldNormal.y > 0.5) {
-          // We're on top, use the above calculation
-        } else {
-          // We're on the side, position the block next to the existing one
-          // Move the block in the direction of the normal
-          const existingBlockDef = this.getBlockDefForObject(
-            validIntersection.object
+        // If not found directly, check if it's a child of a group
+        if (!existingBlock) {
+          existingBlock = this.currentCourse.blocks.find(
+            (b) => b.mesh instanceof THREE.Group &&
+                  b.mesh.children.some((child) => child === validIntersection.object)
           );
-          if (existingBlockDef) {
-            // Calculate how much to move based on the block dimensions
-            const moveX =
-              worldNormal.x *
-              ((existingBlockDef.dimensions.x + blockDef.dimensions.x) / 2);
-            const moveZ =
-              worldNormal.z *
-              ((existingBlockDef.dimensions.z + blockDef.dimensions.z) / 2);
-
-            // Apply the movement
-            position.x += moveX;
-            position.z += moveZ;
-
-            // Set y to match the existing block's y level for side placement
-            // Get the y center of the existing block
-            const existingBlockY = validIntersection.object.position.y;
-            position.y = existingBlockY;
-          }
+        }
+        
+        if (existingBlock) {
+          existingBlockDef = this.blockFactory.getBlockDefinition(existingBlock.type);
         }
       }
+
+      if (existingBlock && existingBlockDef) {
+        // Get the position of the existing block
+        const existingBlockPos = new THREE.Vector3(
+          existingBlock.position.x,
+          existingBlock.position.y,
+          existingBlock.position.z
+        );
+        
+        // Check which face we're hovering over by comparing the normal
+        const isTop = worldNormal.y > 0.5;
+        const isBottom = worldNormal.y < -0.5;
+        const isSide = !isTop && !isBottom;
+        
+        if (isTop) {
+          // Placing on top
+          position.x = existingBlockPos.x;
+          position.z = existingBlockPos.z;
+          position.y = existingBlockPos.y + (existingBlockDef.dimensions.y / 2) + (blockDef.dimensions.y / 2);
+          
+          // Show upward placement indicator
+          this.createPlacementIndicator(
+            existingBlockPos.clone(), 
+            new THREE.Vector3(0, 1, 0), 
+            existingBlockDef.dimensions.y / 2 + 0.2,
+            0x00ff00 // Green
+          );
+        } else if (isBottom) {
+          // Placing below
+          position.x = existingBlockPos.x;
+          position.z = existingBlockPos.z;
+          position.y = existingBlockPos.y - (existingBlockDef.dimensions.y / 2) - (blockDef.dimensions.y / 2);
+          
+          // Show downward placement indicator
+          this.createPlacementIndicator(
+            existingBlockPos.clone(), 
+            new THREE.Vector3(0, -1, 0), 
+            existingBlockDef.dimensions.y / 2 + 0.2,
+            0x00ff00 // Green
+          );
+        } else if (isSide) {
+          // Placing on the side - determine which side
+          const sideOffset = new THREE.Vector3();
+          
+          // Calculate the offset from the center of the existing block to exactly align with its edge
+          sideOffset.x = worldNormal.x * ((existingBlockDef.dimensions.x / 2) + (blockDef.dimensions.x / 2));
+          sideOffset.z = worldNormal.z * ((existingBlockDef.dimensions.z / 2) + (blockDef.dimensions.z / 2));
+          
+          // Apply the offset to position our new block right next to the existing one
+          position.x = existingBlockPos.x + sideOffset.x;
+          position.z = existingBlockPos.z + sideOffset.z;
+          position.y = existingBlockPos.y; // Keep on same level for side placement
+          
+          // Show side placement indicator
+          this.createPlacementIndicator(
+            existingBlockPos.clone(), 
+            new THREE.Vector3(worldNormal.x, 0, worldNormal.z).normalize(), 
+            Math.max(existingBlockDef.dimensions.x, existingBlockDef.dimensions.z) / 2 + 0.2,
+            0x00ff00 // Green
+          );
+        }
+      }
+    } else if (isExistingBlock && !this.snapEnabled) {
+      // FREE MODE: We're placing on an existing block without snapping
+      
+      // Set the y position based on intersection point plus half block height
+      position.y = validIntersection.point.y + blockDef.dimensions.y / 2;
+      
+      // Don't snap x and z in free mode - just use the exact intersection point
+      
+      // Show a simple placement indicator
+      this.createPlacementIndicator(
+        new THREE.Vector3(position.x, position.y - blockDef.dimensions.y / 2, position.z),
+        new THREE.Vector3(0, 1, 0),
+        0.5,
+        0x0000ff // Blue indicator for free mode
+      );
     } else {
       // We're placing on the ground grid
+      if (this.snapEnabled) {
+        // Round to nearest grid point for better alignment when snap is on
+        position.x = Math.round(position.x);
+        position.z = Math.round(position.z);
+      }
+      // Always set Y to half block height above the grid
       position.y = blockDef.dimensions.y / 2;
     }
 
@@ -931,6 +1026,26 @@ class ParkourHoboCourseBuilder {
     this.placeholderMesh.rotation.y = THREE.MathUtils.degToRad(
       this.rotationAngle
     );
+  }
+
+  // Add this new method for creating placement indicators
+  private createPlacementIndicator(origin: THREE.Vector3, direction: THREE.Vector3, length: number, color: number) {
+    // Remove any existing indicator first
+    if (this.placementIndicator) {
+      this.scene.remove(this.placementIndicator);
+    }
+    
+    // Create a new arrow helper to show placement direction
+    this.placementIndicator = new THREE.ArrowHelper(
+      direction.normalize(),
+      origin,
+      length,
+      color,
+      length * 0.3, // Head length
+      length * 0.2  // Head width
+    );
+    
+    this.scene.add(this.placementIndicator);
   }
 
   // Helper method to get block definition for an object
@@ -983,6 +1098,62 @@ class ParkourHoboCourseBuilder {
       return false;
     }
 
+    // In free mode, be more permissive about placement collisions
+    if (!this.snapEnabled) {
+      // Allow more overlap in free placement mode
+      const overlapThreshold = 0.6; // Allow up to 60% overlap in free mode
+      
+      // Create a box for the new block with reduced collision size
+      const newBlockBox = new THREE.Box3();
+      const halfWidth = blockDef.dimensions.x / 2 * (1 - overlapThreshold);
+      const halfHeight = blockDef.dimensions.y / 2 * (1 - overlapThreshold);
+      const halfDepth = blockDef.dimensions.z / 2 * (1 - overlapThreshold);
+
+      newBlockBox.min.set(
+        position.x - halfWidth,
+        position.y - halfHeight,
+        position.z - halfDepth
+      );
+
+      newBlockBox.max.set(
+        position.x + halfWidth,
+        position.y + halfHeight,
+        position.z + halfDepth
+      );
+
+      // Check for collision with other blocks with reduced strictness
+      for (const block of this.currentCourse.blocks) {
+        if (!block.mesh) continue;
+
+        // Create a box for the existing block with reduced size
+        const existingBlockDef = this.blockFactory.getBlockDefinition(block.type);
+        const existingBlockBox = new THREE.Box3();
+        const exHalfWidth = existingBlockDef.dimensions.x / 2 * (1 - overlapThreshold);
+        const exHalfHeight = existingBlockDef.dimensions.y / 2 * (1 - overlapThreshold);
+        const exHalfDepth = existingBlockDef.dimensions.z / 2 * (1 - overlapThreshold);
+
+        existingBlockBox.min.set(
+          block.position.x - exHalfWidth,
+          block.position.y - exHalfHeight,
+          block.position.z - exHalfDepth
+        );
+
+        existingBlockBox.max.set(
+          block.position.x + exHalfWidth,
+          block.position.y + exHalfHeight,
+          block.position.z + exHalfDepth
+        );
+
+        // Check if boxes intersect with the reduced sizes
+        if (newBlockBox.intersectsBox(existingBlockBox)) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+    
+    // Original snap mode collision detection (unchanged)
     // Create a box for the new block
     const newBlockBox = new THREE.Box3();
     const halfWidth = blockDef.dimensions.x / 2;
@@ -1032,38 +1203,70 @@ class ParkourHoboCourseBuilder {
 
       // Check if boxes intersect
       if (newBlockBox.intersectsBox(existingBlockBox)) {
-        // Now check if this is a valid stacking situation
-
-        // Calculate vertical overlap
-        const verticalOverlap = Math.min(
-          newBlockBox.max.y - existingBlockBox.min.y,
-          existingBlockBox.max.y - newBlockBox.min.y
-        );
-
-        // Calculate horizontal overlap along X and Z
-        const xOverlap = Math.min(
-          newBlockBox.max.x - existingBlockBox.min.x,
-          existingBlockBox.max.x - newBlockBox.min.x
-        );
-
-        const zOverlap = Math.min(
-          newBlockBox.max.z - existingBlockBox.min.z,
-          existingBlockBox.max.z - newBlockBox.min.z
-        );
-
-        const xyArea =
-          existingBlockDef.dimensions.x * existingBlockDef.dimensions.z;
-        const overlapArea = xOverlap * zOverlap;
-
-        // Check if this is a stacking situation (small vertical overlap, significant horizontal overlap)
-        const isStacking =
-          verticalOverlap < 0.3 * existingBlockDef.dimensions.y &&
-          overlapArea > 0.2 * xyArea;
-
-        // Allow stacking, but prevent true overlaps
-        if (!isStacking) {
-          return false;
+        // Now check if this is a valid stacking/snapping situation
+        
+        // Calculate centers of both boxes
+        const newCenter = new THREE.Vector3();
+        newBlockBox.getCenter(newCenter);
+        
+        const existingCenter = new THREE.Vector3();
+        existingBlockBox.getCenter(existingCenter);
+        
+        // Calculate the vector from existing to new center
+        const centerDiff = new THREE.Vector3().subVectors(newCenter, existingCenter);
+        
+        // Normalize to get direction
+        const direction = centerDiff.clone().normalize();
+        
+        // Calculate the absolute of each component
+        const absX = Math.abs(direction.x);
+        const absY = Math.abs(direction.y);
+        const absZ = Math.abs(direction.z);
+        
+        // Determine if we're stacking vertically or placing side by side
+        const isVertical = absY > absX && absY > absZ;
+        const isHorizontal = !isVertical;
+        
+        // Calculate acceptable overlap thresholds
+        const allowedVerticalOverlap = 0.1; // 10% overlap allowed for vertical stacking
+        const allowedHorizontalOverlap = 0.25; // 25% overlap allowed for side-by-side placement
+        
+        // Calculate actual overlaps in each dimension
+        const overlapX = Math.min(newBlockBox.max.x - existingBlockBox.min.x, 
+                                  existingBlockBox.max.x - newBlockBox.min.x);
+        const overlapY = Math.min(newBlockBox.max.y - existingBlockBox.min.y, 
+                                  existingBlockBox.max.y - newBlockBox.min.y);
+        const overlapZ = Math.min(newBlockBox.max.z - existingBlockBox.min.z, 
+                                  existingBlockBox.max.z - newBlockBox.min.z);
+        
+        // Calculate total volumes
+        const newVolume = (newBlockBox.max.x - newBlockBox.min.x) * 
+                          (newBlockBox.max.y - newBlockBox.min.y) * 
+                          (newBlockBox.max.z - newBlockBox.min.z);
+        const existingVolume = (existingBlockBox.max.x - existingBlockBox.min.x) * 
+                               (existingBlockBox.max.y - existingBlockBox.min.y) * 
+                               (existingBlockBox.max.z - existingBlockBox.min.z);
+        const overlapVolume = overlapX * overlapY * overlapZ;
+        
+        // Calculate overlap percentages
+        const newOverlapPercentage = overlapVolume / newVolume;
+        const existingOverlapPercentage = overlapVolume / existingVolume;
+        
+        // Determine if the placement is valid based on our rules
+        const validStackingArrangement = isVertical && 
+                                        overlapY < (existingBlockBox.max.y - existingBlockBox.min.y) * allowedVerticalOverlap;
+        
+        const validSideBySide = isHorizontal && 
+                                Math.max(newOverlapPercentage, existingOverlapPercentage) < allowedHorizontalOverlap;
+        
+        // If either placement scenario is valid, allow the placement
+        if (validStackingArrangement || validSideBySide) {
+          // Valid placement, continue checking other blocks
+          continue;
         }
+        
+        // If we get here, the placement is invalid
+        return false;
       }
     }
 
@@ -1296,6 +1499,12 @@ class ParkourHoboCourseBuilder {
     if (tool !== "build" && this.placeholderMesh) {
       this.scene.remove(this.placeholderMesh);
       this.placeholderMesh = null;
+      
+      // Also remove any placement indicator
+      if (this.placementIndicator) {
+        this.scene.remove(this.placementIndicator);
+        this.placementIndicator = null;
+      }
     }
 
     // Restore placeholder if switching to build mode
@@ -1535,6 +1744,16 @@ class ParkourHoboCourseBuilder {
       this.directionalLight.color.set(0xccddff); // Slightly bluer tint for moonlight
       this.directionalLight.position.set(-10, 20, -10);
     }
+  }
+
+  // Add a method to toggle snap mode
+  private toggleSnapMode() {
+    this.snapEnabled = !this.snapEnabled;
+    this.ui.updateSnapModeToggle(this.snapEnabled);
+    this.ui.displayToast(
+      this.snapEnabled ? "Snap Mode: ON" : "Snap Mode: OFF", 
+      1500
+    );
   }
 }
 

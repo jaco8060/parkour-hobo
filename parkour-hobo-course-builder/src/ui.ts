@@ -35,6 +35,7 @@ export class UI {
   private toastTimeout: number | null = null;
   private resetPlayerCallback: (() => void) | null = null;
   private atmosphereBtn: HTMLElement | null = null;
+  private snapModeBtn: HTMLButtonElement | null = null;
 
   constructor(courseManager: CourseManager) {
     this.courseManager = courseManager;
@@ -72,6 +73,7 @@ export class UI {
     this.setupExportModalEvents();
     this.setupToolbar();
     this.setupAtmosphereToggle();
+    this.setupSnapModeToggle();
 
     // Add this to initialize the reset button click handler
     const resetPlayerBtn = document.getElementById("reset-player-btn");
@@ -186,12 +188,14 @@ export class UI {
   }
 
   private setupToolbar() {
-    const toolButtons = document.querySelectorAll(".tool-btn");
-
-    toolButtons.forEach((btn) => {
+    const toolbarBtns = document.querySelectorAll(".tool-btn");
+    toolbarBtns.forEach((btn) => {
       btn.addEventListener("click", () => {
-        const tool = btn.getAttribute("data-tool") || "build";
-        this.selectTool(tool);
+        const tool = btn.getAttribute("data-tool");
+        if (tool && this.onToolSelected) {
+          this.onToolSelected(tool);
+          this.selectTool(tool);
+        }
       });
     });
 
@@ -674,23 +678,19 @@ export class UI {
 
   // Update the initializeToolbar method
   public initializeToolbar() {
-    const rotateToolBtn = document.querySelector(
-      '.tool-btn[data-tool="rotate"]'
-    );
-    if (rotateToolBtn) {
-      rotateToolBtn.setAttribute("data-tool", "select");
-      rotateToolBtn.setAttribute("title", "Select (3)");
+    const toolbarBtns = document.querySelectorAll(".tool-btn");
+    toolbarBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tool = btn.getAttribute("data-tool");
+        if (tool && this.onToolSelected) {
+          this.onToolSelected(tool);
+          this.selectTool(tool);
+        }
+      });
+    });
 
-      const toolLabel = rotateToolBtn.querySelector(".tool-label");
-      if (toolLabel) {
-        toolLabel.textContent = "Select";
-      }
-
-      const toolIcon = rotateToolBtn.querySelector(".tool-icon");
-      if (toolIcon) {
-        toolIcon.textContent = "👆"; // Selection cursor icon
-      }
-    }
+    // Setup atmosphere toggle
+    this.setupAtmosphereToggle();
   }
 
   // Add method to create controls modal
@@ -956,5 +956,37 @@ export class UI {
 
   public setOnToggleAtmosphere(callback: () => void) {
     this.onToggleAtmosphere = callback;
+  }
+
+  // Modify the setupSnapModeToggle method to use the existing button from HTML
+  private setupSnapModeToggle() {
+    // Get the existing button from the DOM instead of creating a new one
+    this.snapModeBtn = document.getElementById("snap-mode-toggle") as HTMLButtonElement;
+    
+    if (this.snapModeBtn) {
+      // Add event listener
+      this.snapModeBtn.addEventListener("click", () => {
+        if (this.onToggleSnapMode) {
+          this.onToggleSnapMode();
+        }
+      });
+    }
+  }
+
+  // Add method to update snap mode button state
+  public updateSnapModeToggle(snapEnabled: boolean) {
+    if (this.snapModeBtn) {
+      this.snapModeBtn.innerHTML = snapEnabled
+        ? "📌 Snap: ON"
+        : "🔓 Snap: OFF";
+      this.snapModeBtn.classList.toggle("snap-disabled", !snapEnabled);
+    }
+  }
+
+  // Add callback for snap mode toggle
+  private onToggleSnapMode: (() => void) | null = null;
+
+  public setOnToggleSnapMode(callback: () => void) {
+    this.onToggleSnapMode = callback;
   }
 }

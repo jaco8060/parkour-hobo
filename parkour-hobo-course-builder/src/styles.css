@@ -682,29 +682,54 @@ html {
 
 /* Atmosphere Toggle Button */
 .atmosphere-btn {
-  background-color: #4caf50;
+  background-color: #333;
   color: white;
-  border: none;
+  border: 2px solid #4caf50;
+  border-radius: 4px;
   padding: 5px 10px;
   font-family: "Press Start 2P", monospace;
-  font-size: 12px;
+  font-size: 10px;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
+  margin-left: 10px;
+  transition: background-color 0.3s;
 }
 
 .atmosphere-btn:hover {
-  background-color: #3e8e41;
+  background-color: #4caf50;
 }
 
 .atmosphere-btn.night-mode {
-  background-color: #4d64ff; /* Brighter blue (was #1a237e) */
+  border-color: #9370db;
 }
 
 .atmosphere-btn.night-mode:hover {
-  background-color: #4d64ff; /* Brighter blue hover (was #0d1642) */
+  background-color: #9370db;
+}
+
+/* Snap mode toggle button */
+.snap-mode-btn {
+  background-color: #333;
+  color: white;
+  border: 2px solid #4caf50;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-family: "Press Start 2P", monospace;
+  font-size: 10px;
+  cursor: pointer;
+  margin-left: 10px;
+  transition: background-color 0.3s;
+}
+
+.snap-mode-btn:hover {
+  background-color: #4caf50;
+}
+
+.snap-mode-btn.snap-disabled {
+  border-color: #ff8c00;
+}
+
+.snap-mode-btn.snap-disabled:hover {
+  background-color: #ff8c00;
 }
 
 /* Responsive adjustments for atmosphere button */
