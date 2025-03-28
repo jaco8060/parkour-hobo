@@ -660,7 +660,7 @@ class ParkourHoboCourseBuilder {
     if (!this.currentCourse) return;
     
     for (const block of this.currentCourse.blocks) {
-      if (block.type === 'killZone' && block.mesh) {
+      if ((block.type === 'killZone' || block.type === 'killZoneLarge') && block.mesh) {
         // Pulse the opacity between 0.3 and 0.7
         const opacity = 0.3 + (Math.sin(time * 3) + 1) * 0.2;
         
