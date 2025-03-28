@@ -17,15 +17,15 @@ export class CourseManager {
     this.templates = [
       {
         name: 'small',
-        maxBlocks: 20
+        maxBlocks: 200
       },
       {
         name: 'medium',
-        maxBlocks: 35
+        maxBlocks: 400
       },
       {
         name: 'large',
-        maxBlocks: 50
+        maxBlocks: 600
       }
     ];
   }

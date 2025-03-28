@@ -9,12 +9,7 @@ export class Player {
   rightLeg: THREE.Mesh;
   leftArm: THREE.Mesh;
   rightArm: THREE.Mesh;
-  isJumping: boolean = false;
-  jumpHeight: number = 2;
-  jumpTime: number = 0;
-  jumpDuration: number = 0.5;
-  velocity: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
-  gravity: number = 9.8;
+  gravity: number = 15;
   
   // Movement control properties
   private controls: PlayerControls = {...DEFAULT_CONTROLS};
@@ -37,7 +32,6 @@ export class Player {
   private collisionBlocks: Block[] = [];
   private verticalVelocity: number = 0;
   private jumpForce: number = 8;
-  private fallSpeed: number = 0;
   private terminalVelocity: number = 20;
   
   // Kill zone properties
@@ -241,11 +235,11 @@ export class Player {
 
     // Jumping pose when in air
     if (!this.isGrounded) {
-      // Set legs and arms for jump
-      this.leftLeg.rotation.x = -0.3;
-      this.rightLeg.rotation.x = -0.3;
-      this.leftArm.rotation.x = -0.6;
-      this.rightArm.rotation.x = -0.6;
+        // Set legs and arms for jump
+        this.leftLeg.rotation.x = -0.3;
+        this.rightLeg.rotation.x = -0.3;
+        this.leftArm.rotation.x = -0.6;
+        this.rightArm.rotation.x = -0.6;
     }
     
     // Update the collision box
@@ -275,10 +269,10 @@ export class Player {
   private checkGroundCollision() {
     // Check if player is below ground level
     if (this.mesh.position.y < 0) {
-      this.mesh.position.y = 0;
+        this.mesh.position.y = 0;
       this.verticalVelocity = 0;
       this.isGrounded = true;
-      
+        
       // Reset legs and arms to normal position
       if (this.isGrounded && !this.isMoving) {
         this.leftLeg.rotation.x = 0;
@@ -288,7 +282,7 @@ export class Player {
       }
     }
   }
-  
+
   private checkBlockCollisions() {
     this.isGrounded = false; // Reset grounded state
     
@@ -338,7 +332,6 @@ export class Player {
       // Check if player's collision box intersects with block
       if (this.collisionBox.intersectsBox(blockBox)) {
         // Get the intersection information
-        const playerMinY = this.collisionBox.min.y;
         const blockMaxY = blockBox.max.y;
         const blockMinY = blockBox.min.y;
         
@@ -549,25 +542,7 @@ export class Player {
     if (this.isGrounded) {
       this.isGrounded = false;
       this.verticalVelocity = this.jumpForce;
-      this.isJumping = true;
     }
-  }
-
-  // Legacy movement methods (no longer used directly)
-  moveForward(distance: number) {
-    this.mesh.position.z -= distance;
-  }
-
-  moveBackward(distance: number) {
-    this.mesh.position.z += distance;
-  }
-
-  moveLeft(distance: number) {
-    this.mesh.position.x -= distance;
-  }
-
-  moveRight(distance: number) {
-    this.mesh.position.x += distance;
   }
 
   getPosition(): Vector3 {
@@ -666,7 +641,7 @@ export class Player {
     collectMeshes(this.mesh);
     
     // Make all parts red
-    meshColorMap.forEach((originalColor, mesh) => {
+    meshColorMap.forEach((_, mesh) => {
       if (mesh.material instanceof THREE.MeshBasicMaterial) {
         mesh.material.color.set(0xff0000);
       }
