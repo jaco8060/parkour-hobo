@@ -1,1088 +1,1431 @@
-import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import {
-  PlayerState, 
-  KeyState,
-  BuildControls,
-  TouchJoystick, 
-  AnimationActions,
-  BlockData,
-  BuilderState,
-} from "./utils/types.js";
-import { 
-  CAMERA_SETTINGS, 
-  PLAYER_SETTINGS, 
-  STORAGE_KEYS,
-  BLOCK_TYPES,
-  TEMPLATE_SIZES,
-  BUILDER_SETTINGS
-} from "./utils/config.js";
-import { 
-  isMobileDevice, 
-  loadBuilderState, 
-  removeElement, 
-  saveBuilderState, 
-  sendMessageToParent,
-  resetBuilderLocalStorage
-} from "./utils/helpers.js";
-import { 
-  setupLighting, 
-  createGround, 
-  createCityEnvironment, 
-  setupCourseTemplate, 
-  clearEnvironment,
-  createBuilderGrid,
-  getInitialCameraPosition
-} from "./systems/environment.js";
-import { 
-  loadPlayerCharacter, 
-  updatePlayer, 
-  updateCamera, 
-  updatePlayerAnimation, 
-  resetPlayerState, 
-  sendPositionUpdate 
-} from "./systems/player.js";
-import { 
-  updateBuilderCamera, 
-  createPlacementPreview, 
-  updatePlacementPreview, 
-  placeBlock, 
-  removeBlock, 
-  saveCourse, 
-  createBuilderUI, 
-  createBuilderToolbar, 
-  updateToolbarSelection, 
-  createBuilderDebugUI,
-  createCrosshair,
-  updateCrosshair,
-  highlightBlockForRemoval
-} from "./systems/builder.js";
-import { 
-  setupEventListeners, 
-  setupBuilderMouseHandlers, 
-  resetAllControls 
-} from "./systems/input.js";
-import { 
-  showOverlay, 
-  hideOverlay, 
-  getOverlayActive, 
-  showNotification 
-} from "./components/Overlay.js";
-import { 
-  createMobileControls, 
-  setupMobileTouchHandlers, 
-  updateKeyStatesFromJoystick, 
-  setupMobileBuilderControls 
-} from "./components/MobileControls.js";
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { Player } from './player';
+import { BlockFactory } from './blockFactory';
+import { CourseManager } from './courseManager';
+import { UI } from './ui';
+import { Course, Vector3, Block, PlayerControls, DEFAULT_CONTROLS, BlockDefinition, AtmosphereSettings } from './types';
+import './styles.css';
 
-// Game state
-let scene: THREE.Scene;
-let camera: THREE.PerspectiveCamera;
-let renderer: THREE.WebGLRenderer;
-let player: THREE.Object3D | null = null;
-let mixer: THREE.AnimationMixer | null = null;
-let actions: AnimationActions = {
-  idle: null,
-  running: null,
-  jumping: null
-};
-let clock = new THREE.Clock();
-let platforms: THREE.Mesh[] = [];
-let gameStarted = false;
-let isMobile = false;
-let joystickPosition = { x: 0, y: 0 };
-let touchJoystick: TouchJoystick = { active: false, startX: 0, startY: 0 };
+class ParkourHoboCourseBuilder {
+  // Three.js components
+  private scene: THREE.Scene;
+  private camera: THREE.PerspectiveCamera;
+  private renderer: THREE.WebGLRenderer;
+  private controls: OrbitControls;
+  private raycaster: THREE.Raycaster;
+  private pointer: THREE.Vector2;
+  
+  // Game components
+  private blockFactory: BlockFactory;
+  private courseManager: CourseManager;
+  private ui: UI;
+  private currentCourse: Course | null = null;
+  private selectedBlockType: string | null = null;
+  private player: Player | null = null;
+  private isBuilderMode: boolean = true;
+  
+  // Movement in player mode
+  private clock: THREE.Clock;
+  
+  // Add placeholder property
+  private placeholderMesh: THREE.Mesh | THREE.Group | null = null;
+  private canPlaceBlock: boolean = true;
 
-// Builder mode state
-let builderMode = false;
-let buildingBlocks: THREE.Mesh[] = [];
-let selectedBlockType = "platform"; // platform, start, finish
-let courseTemplate = "medium"; // small, medium, large
-let currentBuilderTool = "build"; // build, remove, camera
-let buildControls: BuildControls = {
-  forward: false,
-  backward: false,
-  left: false,
-  right: false,
-  up: false,
-  down: false,
-  rotateLeft: false,
-  rotateRight: false,
-  sprint: false
-};
-let placementPreview: THREE.Mesh | null = null;
-let isPlacingBlock = false;
-let cameraRotationAngle = 0;
+  // Add these properties to the ParkourHoboCourseBuilder class
+  private currentTool: string = 'build';
+  private rotationAngle: number = 0;
 
-// Player state
-let playerState: PlayerState = resetPlayerState();
+  // Add this property to the class
+  private gridHelper: THREE.GridHelper;
 
-// Input state
-let keyState: KeyState = {
-  forward: false,
-  backward: false,
-  left: false,
-  right: false,
-  jump: false,
-  rotateLeft: false,
-  rotateRight: false,
-  sprint: false
-};
+  // Add these properties to the class
+  private highlightedBlock: Block | null = null;
+  private deleteMaterial: THREE.MeshBasicMaterial;
+  private selectedBlock: Block | null = null;
+  private selectionMaterial: THREE.MeshBasicMaterial;
 
-// Timer for periodically saving builder state
-let saveStateTimer = 0;
-const SAVE_STATE_INTERVAL = 10; // Save every 10 seconds
+  // Add this property to the class with proper initialization
+  private toast: HTMLDivElement | null = null;
+  private selectedBlockTooltip: HTMLDivElement | null = null;
 
-// Add a new variable to track whether the game was initialized in play-only mode
-let playOnlyMode = false;
+  // Add this property to the class
+  private placeholderHeightOffset: number = 0;
 
-/**
- * Initialize the game
- */
-function init() {
-  console.log("Initializing Three.js scene...");
-  
-  // Clear any stale highlighted block reference
-  window.__targetedBlockForRemoval = null;
-  
-  // Check URL parameters to determine initial mode
-  const urlParams = new URLSearchParams(window.location.search);
-  const initialMode = urlParams.get('mode');
-  const courseId = urlParams.get('courseId');
-  
-  // Set modes based on URL parameters
-  if (initialMode === 'play' && courseId) {
-    // Initialize in play-only mode
-    playOnlyMode = true;
-    localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'player');
-    console.log("Initializing in play-only mode with course ID:", courseId);
-  } else if (initialMode === 'build') {
-    // Initialize in builder mode
-    playOnlyMode = false;
-    localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'builder');
-    const templateSize = urlParams.get('template') || localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
-    localStorage.setItem(STORAGE_KEYS.BUILDER_TEMPLATE, templateSize);
-    console.log("Initializing in builder mode with template:", templateSize);
-  } else {
-    // Default to builder mode if no specific mode requested
-    playOnlyMode = false;
-    localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'builder');
-    const templateSize = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
-    console.log("No specific mode requested, defaulting to builder mode with template:", templateSize);
-  }
-  
-  // Detect if on mobile
-  isMobile = isMobileDevice();
-  
-  // Create scene
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87CEEB); // Light blue sky
-  
-  // Add fog for depth
-  scene.fog = new THREE.Fog(0x87CEEB, 30, 100);
-  
-  // Create camera
-  camera = new THREE.PerspectiveCamera(
-    CAMERA_SETTINGS.FOV,
-    window.innerWidth / window.innerHeight,
-    CAMERA_SETTINGS.NEAR,
-    CAMERA_SETTINGS.FAR
-  );
-  camera.position.copy(CAMERA_SETTINGS.DEFAULT_POSITION);
-  
-  // Create renderer
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  
-  // Add to container
-  const container = document.getElementById("game-container");
-  if (container) {
-    container.appendChild(renderer.domElement);
-    console.log("Renderer appended to #game-container");
-    
-    // Add focus/blur handlers
-    window.addEventListener("blur", () => showOverlay(() => resetAllControls(keyState, buildControls), builderMode));
-    container.addEventListener("mouseleave", () => showOverlay(() => resetAllControls(keyState, buildControls), builderMode));
-    
-    // Show initial overlay
-    showOverlay(() => resetAllControls(keyState, buildControls), builderMode);
-  } else {
-    console.error("No #game-container found!");
-    return;
-  }
-  
-  // Lighting
-  setupLighting(scene);
-  
-  // Create a placeholder player immediately - will be replaced when model loads
-  import('./systems/player.js').then(playerModule => {
-    player = playerModule.createPlaceholderPlayer(scene);
-    console.log("Placeholder player created");
-    
-    // Hide player in builder mode, show in player mode
-    player.visible = localStorage.getItem(STORAGE_KEYS.LAST_MODE) !== 'builder';
-  });
-  
-  // Load player character
-  loadPlayerCharacter(scene, (p: THREE.Object3D, m: THREE.AnimationMixer, a: AnimationActions) => {
-    // Remove placeholder if it exists
-    if (player) {
-      scene.remove(player);
-    }
-    
-    player = p;
-    mixer = m;
-    actions = a;
-    
-    // Hide player in builder mode, show in player mode
-    player.visible = localStorage.getItem(STORAGE_KEYS.LAST_MODE) !== 'builder';
-  });
-  
-  // Set up event listeners
-  setupEventListeners(
-    keyState,
-    buildControls,
-    builderMode,
-    gameStarted,
-    () => showOverlay(() => resetAllControls(keyState, buildControls), builderMode),
-    () => resetAllControls(keyState, buildControls),
-    toggleGameMode,
-    handleResize,
-    playOnlyMode
-  );
-  
-  // Create mobile controls if on mobile
-  if (isMobile) {
-    const gameContainer = document.getElementById("game-container");
-    if (gameContainer) {
-      createMobileControls(gameContainer, keyState, touchJoystick);
-      setupMobileTouchHandlers(gameContainer, keyState, touchJoystick, joystickPosition);
-    }
-  }
-  
-  // Start animation loop
-      animate();
-  
-  // Send ready message
-  sendMessageToParent("webViewReady");
-      console.log("Sent webViewReady message");
-  
-  // Initialize in the proper mode based on URL parameters
-  if (playOnlyMode) {
-    // Start in player mode with specified course
-    console.log("Starting in play-only mode");
-    gameStarted = true;
-    builderMode = false;
-    
-    // Load the specified course
-    if (courseId) {
-      // TODO: Implement loading of specific course by ID
-      sendMessageToParent("requestCourse", { courseId });
-      console.log("Requested course data for ID:", courseId);
-    }
-  } else {
-    // Start in builder mode
-    const templateSize = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
-    console.log("Starting in builder mode with template:", templateSize);
-    enterBuilderMode(templateSize);
-  }
-}
+  // Add these properties to the ParkourHoboCourseBuilder class
+  private skyBox: THREE.Mesh | null = null;
+  private clouds: THREE.Group | null = null;
+  private sunMoon: THREE.Mesh | null = null;
+  private ambientLight: THREE.AmbientLight;
+  private directionalLight: THREE.DirectionalLight;
 
-/**
- * Animation loop with added save functionality
- */
-function animate() {
-  requestAnimationFrame(animate);
-  
-  const deltaTime = Math.min(clock.getDelta(), 0.1);
-  
-  // Update save timer
-  saveStateTimer += deltaTime;
-  
-  // Check current mode from localStorage to ensure consistency
-  const storedMode = localStorage.getItem(STORAGE_KEYS.LAST_MODE);
-  const effectiveBuilderMode = builderMode || storedMode === 'builder';
-  
-  // If builder mode state is inconsistent, fix it
-  if (effectiveBuilderMode !== builderMode) {
-    console.log(`Fixing inconsistent builder mode: variable=${builderMode}, localStorage=${storedMode}, using=${effectiveBuilderMode}`);
+  constructor() {
+    // Initialize components
+    this.blockFactory = new BlockFactory();
+    this.courseManager = new CourseManager();
+    this.ui = new UI(this.courseManager);
+    this.clock = new THREE.Clock();
     
-    // If there's a severe inconsistency, reset localStorage
-    if (builderMode === false && storedMode === 'builder') {
-      console.warn("Severe state inconsistency detected; resetting localStorage");
-      resetBuilderLocalStorage();
-    }
+    // Set up Three.js
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x87CEEB); // Sky blue
     
-    builderMode = effectiveBuilderMode;
-  }
-  
-  // Periodically save builder state
-  if (builderMode && saveStateTimer >= SAVE_STATE_INTERVAL) {
-    saveStateTimer = 0;
-    saveBuilderState(
-      builderMode,
-      courseTemplate,
-      camera,
-      currentBuilderTool,
-      selectedBlockType,
-      buildingBlocks
+    this.camera = new THREE.PerspectiveCamera(
+      75, 
+      window.innerWidth / window.innerHeight, 
+      0.1, 
+      1000
     );
-  }
-  
-  if (builderMode) {
-    // Update builder camera based on controls
-    updateBuilderCamera(camera, buildControls, deltaTime);
+    this.camera.position.set(10, 10, 10);
     
-    // Update placement preview if in build mode
-    if (placementPreview && currentBuilderTool === "build") {
-      // Create a list of all objects that can be interacted with
-      const allObjects: THREE.Mesh[] = [];
+    this.renderer = new THREE.WebGLRenderer({
+      canvas: document.getElementById('threejs-canvas') as HTMLCanvasElement,
+      antialias: true
+    });
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    
+    this.raycaster = new THREE.Raycaster();
+    this.pointer = new THREE.Vector2();
+    
+    // Set up lighting
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    this.scene.add(this.ambientLight);
+    
+    this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    this.directionalLight.position.set(10, 20, 10);
+    this.scene.add(this.directionalLight);
+    
+    // Add grid helper
+    this.gridHelper = new THREE.GridHelper(50, 50);
+    this.scene.add(this.gridHelper);
+    
+    // Create a material for deletion highlighting
+    this.deleteMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0xff0000,  // Red
+      transparent: true,
+      opacity: 0.7
+    });
+    
+    // Create a material for selection highlighting
+    this.selectionMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0x00ff00,  // Green
+      transparent: true,
+      opacity: 0.7
+    });
+    
+    // Set up UI callbacks
+    this.setupUICallbacks();
+    
+    // Set up event listeners
+    this.setupEventListeners();
+    
+    // Initialize UI elements
+    this.ui.initializeToolbar();
+    this.setupToolbar();
+    
+    // Start animation loop
+    this.animate();
+  }
+
+  private setupUICallbacks() {
+    this.ui.setOnNewCourse((templateName: string) => {
+      const courseName = `New ${templateName.charAt(0).toUpperCase() + templateName.slice(1)} Course`;
+      this.currentCourse = this.courseManager.createNewCourse(courseName, templateName);
+      this.ui.setCourseNameInput(courseName);
+      this.ui.hideStartMenu();
+      this.ui.showBuilderMode();
+      this.isBuilderMode = true;
+      this.updateBlockCounter();
       
-      // Add building blocks as potential targets
-      allObjects.push(...buildingBlocks);
+      // Add this line to initialize the atmosphere when creating a new course
+      if (this.currentCourse) {
+        this.setupAtmosphere(this.currentCourse.atmosphere);
+      }
+    });
+    
+    this.ui.setOnLoadCourse((courseId: string) => {
+      const course = this.courseManager.getCourse(courseId);
+      if (course) {
+        this.currentCourse = this.loadCourseIntoScene(course);
+        this.ui.setCourseNameInput(course.name);
+        this.ui.hideStartMenu();
+        this.ui.showBuilderMode();
+        this.isBuilderMode = true;
+        this.updateBlockCounter();
+        
+        // Update atmosphere toggle in UI
+        if (this.currentCourse) {
+          this.ui.updateAtmosphereToggle(this.currentCourse.atmosphere.isDayMode);
+        }
+      }
+    });
+    
+    this.ui.setOnBlockSelected((blockType: string) => {
+      this.selectedBlockType = blockType;
+      this.updatePlaceholder();
+    });
+    
+    this.ui.setOnSaveCourse(() => {
+      if (this.currentCourse) {
+        const courseName = this.ui.getCourseName();
+        if (courseName.trim() === '') {
+          alert('Please enter a course name');
+          return;
+        }
+        
+        this.currentCourse.name = courseName;
+        this.courseManager.saveCourse(this.currentCourse);
+        alert('Course saved successfully!');
+      }
+    });
+    
+    this.ui.setOnExportCourse(() => {
+      if (this.currentCourse) {
+        // Validate course before exporting
+        const validation = this.courseManager.validateCourse(this.currentCourse);
+        if (!validation.valid) {
+          this.ui.showErrorModal(validation.message);
+          return;
+        }
+        
+        const courseName = this.ui.getCourseName();
+        if (courseName.trim() === '') {
+          this.ui.showErrorModal('Please enter a course name');
+          return;
+        }
+        
+        this.currentCourse.name = courseName;
+        const jsonCode = this.courseManager.exportCourseAsJson(this.currentCourse);
+        this.ui.showExportModal(jsonCode);
+      }
+    });
+    
+    this.ui.setOnReset(() => {
+      this.clearScene();
+      this.ui.showStartMenu();
+    });
+    
+    this.ui.setOnToolSelected((tool: string) => {
+      // Set the current tool
+      this.setTool(tool);
       
-      // Add any platforms that aren't already in buildingBlocks (from environment)
-      platforms.forEach(platform => {
-        // Only add if it's not already in our list (avoid duplicates)
-        if (!buildingBlocks.includes(platform)) {
-          allObjects.push(platform);
+      // Handle player mode tool
+      if (tool === 'player') {
+        if (this.isBuilderMode) {
+          this.toggleMode();
+        }
+        return;
+      }
+      
+      // If we're in player mode, switch back to builder mode
+      if (!this.isBuilderMode) {
+        this.toggleMode();
+      }
+    });
+    
+    // Set up player controls callback
+    this.ui.setOnUpdateControls((controls: Partial<PlayerControls>) => {
+      if (this.player) {
+        this.player.updateControls(controls);
+        this.ui.updateControlsDisplay(this.player.getControls());
+      }
+    });
+    
+    // Override the UI's getControlsFromPlayer method using a closure
+    (this.ui as any).getControlsFromPlayer = () => {
+      if (this.player) {
+        return this.player.getControls();
+      }
+      return DEFAULT_CONTROLS;
+    };
+
+    this.ui.setOnResetPlayer(() => {
+      if (!this.isBuilderMode && this.player && this.currentCourse) {
+        // Reset player to start position
+        if (this.currentCourse.startPosition) {
+          this.player.setPosition(this.currentCourse.startPosition);
+        } else {
+          // If no start position, reset to origin
+          this.player.setPosition({ x: 0, y: 1, z: 0 });
+        }
+        this.ui.displayToast('Player position reset!', 1500);
+      }
+    });
+
+    // Set up atmosphere toggle callback
+    this.ui.setOnToggleAtmosphere(() => {
+      this.toggleAtmosphere();
+    });
+  }
+
+  private setupEventListeners() {
+    // Resize handling
+    window.addEventListener('resize', () => {
+      this.camera.aspect = window.innerWidth / window.innerHeight;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    
+    // Track if we're dragging the camera
+    let isDragging = false;
+    let dragStartTime = 0;
+    
+    this.renderer.domElement.addEventListener('mousedown', () => {
+      isDragging = false;
+      dragStartTime = Date.now();
+    });
+    
+    this.renderer.domElement.addEventListener('mousemove', (event) => {
+      // Calculate pointer position in normalized device coordinates
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      
+      // If mouse is moving with button down, consider it a drag
+      if (event.buttons > 0 && Date.now() - dragStartTime > 100) {
+        isDragging = true;
+      }
+      
+      // Update placeholder position if in build mode
+      if (this.isBuilderMode && this.selectedBlockType && this.currentTool === 'build') {
+        this.updatePlaceholderPosition();
+      }
+      
+      // Highlight blocks when in delete mode
+      if (this.isBuilderMode && this.currentTool === 'delete') {
+        this.highlightBlockForDeletion();
+      }
+      
+      // Highlight blocks when in select mode
+      if (this.isBuilderMode && this.currentTool === 'select') {
+        this.highlightBlockForSelection();
+      }
+      
+      // Update tooltip position for selected block if we have one
+      if (this.selectedBlock && this.selectedBlock.mesh) {
+        // Create a position vector from the block's position
+        const blockPosition = new THREE.Vector3(
+          this.selectedBlock.position.x, 
+          this.selectedBlock.position.y,
+          this.selectedBlock.position.z
+        );
+        
+        // Project the 3D position to screen coordinates
+        const screenPosition = blockPosition.clone().project(this.camera);
+        
+        // Convert to pixel coordinates
+        const canvas = this.renderer.domElement;
+        const x = (screenPosition.x + 1) * canvas.width / 2;
+        const y = (-screenPosition.y + 1) * canvas.height / 2;
+        
+        // Update tooltip with computed screen coordinates (only when in select tool mode)
+        if (this.currentTool === 'select') {
+          this.ui.updateSelectedBlockTooltipPosition(x, y);
+        } else {
+          this.ui.updateSelectedBlockTooltip(false);
+        }
+      }
+    });
+    
+    this.renderer.domElement.addEventListener('click', () => {
+      // Only place/delete/select blocks if we're not dragging the camera
+      if (!isDragging && this.isBuilderMode) {
+        if (this.currentTool === 'build' && this.selectedBlockType && this.canPlaceBlock) {
+          this.buildBlock();
+        } else if (this.currentTool === 'delete' && this.highlightedBlock) {
+          this.deleteHighlightedBlock();
+        } else if (this.currentTool === 'select' && this.highlightedBlock) {
+          this.selectHighlightedBlock();
+        }
+      }
+      
+      // Reset drag state
+      isDragging = false;
+    });
+    
+    // Keyboard events
+    window.addEventListener('keydown', (event) => {
+      // Tool shortcuts
+      if (event.key === '1') {
+        this.ui.selectTool('build');
+        // Set the tool internally as well
+        this.currentTool = 'build';
+      } else if (event.key === '2') {
+        this.ui.selectTool('delete');
+        this.currentTool = 'delete';
+      } else if (event.key === '3') {
+        this.ui.selectTool('select');  // Changed from 'rotate' to 'select'
+        this.currentTool = 'select';
+      } else if (event.key === 'b' || event.key === 'B') {
+        // B toggles between builder and player modes
+        this.toggleMode();
+        
+        // Update toolbar to reflect the current mode
+        if (this.isBuilderMode) {
+          this.ui.selectTool(this.currentTool); // Go back to previous build tool
+        } else {
+          this.ui.selectTool('player');
+        }
+      } else if (event.key === 'r' || event.key === 'R') {
+        // Rotate logic for both modes
+        if (this.isBuilderMode) {
+          if (this.currentTool === 'build' && this.selectedBlockType) {
+            // Rotate the placeholder in build mode
+            this.rotateBlock();
+          } else if (this.currentTool === 'select' && this.selectedBlock) {
+            // Rotate the selected block in select mode
+            this.rotateSelectedBlock();
+          }
+        }
+      } else if (event.key === 'Delete' || event.key === 'Backspace') {
+        // Add delete functionality when a block is selected
+        if (this.isBuilderMode && this.currentTool === 'select' && this.selectedBlock) {
+          const blockToDelete = this.selectedBlock;
+          this.selectedBlock = null;
+          this.ui.updateSelectedBlockTooltip(false);
+          
+          // Find and delete the block
+          if (this.currentCourse) {
+            const blockIndex = this.currentCourse.blocks.findIndex(block => block === blockToDelete);
+            if (blockIndex >= 0) {
+              const block = this.currentCourse.blocks[blockIndex];
+              
+              // Remove from scene
+              if (block.mesh) {
+                this.scene.remove(block.mesh);
+              }
+              
+              // Remove from blocks array
+              this.currentCourse.blocks.splice(blockIndex, 1);
+              
+              // Update start/finish positions if needed
+              if (block.type === 'start') {
+                this.currentCourse.startPosition = { x: 0, y: 0, z: 0 };
+              } else if (block.type === 'finish') {
+                this.currentCourse.finishPosition = { x: 0, y: 0, z: 0 };
+              }
+              
+              // Update block counter
+              this.updateBlockCounter();
+            }
+          }
+        }
+      } else if (event.key === 'Escape') {
+        // Cancel selection when Escape key is pressed
+        if (this.selectedBlock) {
+          this.clearSelection();
+        }
+      } else if (event.key === 'e' || event.key === 'E') {
+        // Raise the placeholder height in builder mode
+        if (this.isBuilderMode && this.currentTool === 'build' && this.placeholderMesh) {
+          this.placeholderHeightOffset += 1;
+          this.updatePlaceholderPosition();
+          this.ui.displayToast(`Placeholder height: ${this.placeholderHeightOffset}`, 1500);
+        }
+      } else if (event.key === 'q' || event.key === 'Q') {
+        // Lower the placeholder height in builder mode
+        if (this.isBuilderMode && this.currentTool === 'build' && this.placeholderMesh) {
+          this.placeholderHeightOffset = Math.max(0, this.placeholderHeightOffset - 1);
+          this.updatePlaceholderPosition();
+          this.ui.displayToast(`Placeholder height: ${this.placeholderHeightOffset}`, 1500);
+        }
+      }
+      
+      // Player controls - forward jump key event to player only in player mode
+      if (!this.isBuilderMode && this.player && this.player.getControls) {
+        const controls = this.player.getControls();
+        if (event.key.toLowerCase() === controls.jump) {
+          this.player.jump();
+        }
+      }
+    });
+
+  }
+
+  private toggleMode() {
+    this.isBuilderMode = !this.isBuilderMode;
+    
+    if (this.isBuilderMode) {
+      // Switch to builder mode
+      this.ui.showBuilderMode();
+      
+      if (this.player) {
+        // Remove player from scene
+        this.scene.remove(this.player.mesh);
+        this.player = null;
+      }
+      
+      // Reset camera and controls
+      this.controls.enabled = true;
+      
+      // Restore placeholder if block type is selected
+      if (this.selectedBlockType) {
+        this.updatePlaceholder();
+      }
+      
+      // Show grid in builder mode
+      this.gridHelper.visible = true;
+      
+      // Reset any highlighted blocks
+      if (this.highlightedBlock) {
+        this.highlightedBlock.unhighlight();
+        this.highlightedBlock = null;
+      }
+    } else {
+      // Switch to player mode
+      this.ui.showPlayerMode();
+      
+      // Clear any selections when switching to player mode
+      if (this.selectedBlock) {
+        this.clearSelection();
+      }
+      
+      // Create player at start position
+      if (this.currentCourse && this.currentCourse.startPosition) {
+        this.createPlayer(this.currentCourse.startPosition);
+      } else {
+        // If no start position, create player at origin
+        this.createPlayer({ x: 0, y: 1, z: 0 });
+      }
+      
+      // Disable orbit controls in player mode
+      this.controls.enabled = false;
+      
+      // Hide placeholder in player mode
+      if (this.placeholderMesh) {
+        this.scene.remove(this.placeholderMesh);
+        this.placeholderMesh = null;
+      }
+      
+      // Hide grid in player mode
+      this.gridHelper.visible = false;
+    }
+  }
+
+  private createPlayer(position: Vector3) {
+    if (this.player) {
+      this.scene.remove(this.player.mesh);
+      this.player.destroy(); // Clean up event listeners
+    }
+    
+    // Disable orbit controls for camera
+    this.controls.enabled = false;
+    
+    // Create new player
+    this.player = new Player(position, this.camera);
+    this.scene.add(this.player.mesh);
+    
+    // Set death callback to show a toast message
+    this.player.setOnDeath(() => {
+      this.ui.displayToast('You died! Returning to start point...', 2000);
+    });
+    
+    // Set level completion callback
+    this.player.setOnLevelComplete(() => {
+      // Show success message with the more prominent UI
+      this.ui.showSuccessMessage('CONGRATULATIONS!<br><br>You successfully parkoured,<br>now get out of here!', 5000);
+      
+      // Optional: Add a small delay before returning to builder mode
+      setTimeout(() => {
+        if (!this.isBuilderMode) {
+          this.toggleMode(); // Switch back to builder mode
+          this.ui.selectTool(this.currentTool); // Go back to previous build tool
+        }
+      }, 6000);
+    });
+    
+    // Update UI with player controls
+    this.ui.updateControlsDisplay(this.player.getControls());
+  }
+
+  private buildBlock() {
+    if (!this.placeholderMesh || !this.selectedBlockType || !this.currentCourse) return;
+    
+    const position = this.placeholderMesh.position.clone();
+    
+    // Get block definition
+    const blockDef = this.blockFactory.getBlockDefinition(this.selectedBlockType);
+    
+    // Create block
+    const block = this.blockFactory.createBlock(
+      this.selectedBlockType, 
+      { x: position.x, y: position.y, z: position.z }, 
+      { x: 0, y: this.rotationAngle, z: 0 }
+    );
+    
+    // Apply rotation
+    block.mesh!.rotation.y = THREE.MathUtils.degToRad(this.rotationAngle);
+    
+    // Add to scene and course
+    this.scene.add(block.mesh!);
+    this.currentCourse.blocks.push(block);
+    
+    // Update start/finish positions if needed
+    if (this.selectedBlockType === 'start') {
+      this.currentCourse.startPosition = { 
+        x: position.x, 
+        y: position.y + blockDef.dimensions.y / 2, 
+        z: position.z 
+      };
+    } else if (this.selectedBlockType === 'finish') {
+      this.currentCourse.finishPosition = { 
+        x: position.x, 
+        y: position.y + blockDef.dimensions.y / 2, 
+        z: position.z 
+      };
+    }
+    
+    // Update block counter
+    this.updateBlockCounter();
+    
+    // Update placeholder validity (limits might have changed)
+    this.updatePlaceholderPosition();
+  }
+
+  private rotateBlock() {
+    // Rotate in 90 degree increments
+    this.rotationAngle = (this.rotationAngle + 90) % 360;
+    
+    // Update placeholder rotation
+    if (this.placeholderMesh) {
+      this.placeholderMesh.rotation.y = THREE.MathUtils.degToRad(this.rotationAngle);
+    }
+  }
+
+  private updateBlockCounter() {
+    if (this.currentCourse) {
+      const template = this.courseManager.getTemplate(this.currentCourse.template);
+      this.ui.updateBlockCounter(this.currentCourse.blocks.length, template.maxBlocks);
+    }
+  }
+
+  private loadCourseIntoScene(course: Course): Course {
+    // Clear current scene first
+    this.clearScene();
+    
+    // Create a copy of the course to work with
+    const courseCopy: Course = {
+      ...course,
+      blocks: []
+    };
+    
+    // Create and add blocks to the scene
+    course.blocks.forEach(block => {
+      const newBlock = this.blockFactory.createBlock(
+        block.type,
+        block.position,
+        block.rotation
+      );
+      
+      this.scene.add(newBlock.mesh!);
+      courseCopy.blocks.push(newBlock);
+    });
+    
+    // Set up atmosphere
+    this.setupAtmosphere(courseCopy.atmosphere);
+    
+    return courseCopy;
+  }
+
+  private clearScene() {
+    // Remove all blocks from the scene
+    if (this.currentCourse) {
+      this.currentCourse.blocks.forEach(block => {
+        if (block.mesh) {
+          this.scene.remove(block.mesh);
         }
       });
-      
-      // Add ground if it exists
-      const ground = scene.children.find(child => 
-        child instanceof THREE.Mesh && child.name === "Ground");
-      if (ground && ground instanceof THREE.Mesh) {
-        allObjects.push(ground);
-      }
-      
-      updatePlacementPreview(camera, placementPreview, allObjects);
-      
-      // Make sure visibility matches the current tool
-      placementPreview.visible = currentBuilderTool === "build";
     }
     
-    // If in remove mode, highlight the block being targeted
-    if (currentBuilderTool === "remove") {
-      highlightBlockForRemoval(camera, buildingBlocks, BUILDER_SETTINGS.REMOVAL_RANGE);
-    }
-  } else if (gameStarted && player) {
-    // Regular game update
-    updatePlayer(
-      deltaTime,
-      player,
-      playerState,
-      keyState,
-      platforms,
-      scene,
-      camera,
-      cameraRotationAngle,
-      () => updateCamera(camera, player as THREE.Object3D, cameraRotationAngle)
-    );
-    
-    // Update camera rotation based on input
-    if (keyState.rotateLeft) {
-      cameraRotationAngle += CAMERA_SETTINGS.ROTATION_SPEED * deltaTime;
-    }
-    if (keyState.rotateRight) {
-      cameraRotationAngle -= CAMERA_SETTINGS.ROTATION_SPEED * deltaTime;
+    // Remove player if exists
+    if (this.player) {
+      this.scene.remove(this.player.mesh);
+      this.player = null;
     }
     
-    // Update animation mixer
-    if (mixer) {
-      mixer.update(deltaTime);
-    } else if (player.userData?.isPlaceholder) {
-      // Animate placeholder character
-      animatePlaceholderPlayer(player, playerState, keyState, deltaTime);
-    }
-    
-    // Update animations based on state
-    updatePlayerAnimation(mixer, actions, playerState, keyState);
-    
-    // Update mobile control states
-    if (isMobile) {
-      updateKeyStatesFromJoystick(joystickPosition, keyState);
-    }
-  }
-  
-  // Render scene
-  renderer.render(scene, camera);
-}
-
-/**
- * Animates the placeholder player with basic movements
- */
-function animatePlaceholderPlayer(
-  player: THREE.Object3D, 
-  playerState: PlayerState,
-  keyState: KeyState,
-  deltaTime: number
-): void {
-  // Check if this is a placeholder player
-  if (!player.userData?.isPlaceholder) return;
-  
-  const isMoving = keyState.forward || keyState.backward || keyState.left || keyState.right;
-  const isJumping = playerState.jumping;
-  
-  // Get the parts of the player
-  const arms = player.children.filter(child => 
-    child.position.y === 0.75 && (child.position.x === -0.65 || child.position.x === 0.65));
-  const legs = player.children.filter(child => 
-    child.position.y === -0.25 && (child.position.x === -0.3 || child.position.x === 0.3));
-  
-  if (isMoving) {
-    // Animate arms and legs while moving
-    const speed = 5; // Animation speed
-    const time = performance.now() * 0.001;
-    
-    arms.forEach((arm, index) => {
-      // Swing arms in opposite directions
-      arm.rotation.x = Math.sin(time * speed + (index * Math.PI)) * 0.5;
-    });
-    
-    legs.forEach((leg, index) => {
-      // Swing legs in opposite directions
-      leg.rotation.x = Math.sin(time * speed + (index * Math.PI)) * 0.5;
-    });
-  } else {
-    // Reset animation when idle
-    [...arms, ...legs].forEach(limb => {
-      // Smoothly return to neutral position
-      limb.rotation.x = limb.rotation.x * 0.9;
-    });
-  }
-  
-  if (isJumping) {
-    // Special jump animation
-    arms.forEach(arm => {
-      // Raise arms when jumping
-      arm.rotation.x = -0.5;
-    });
-  }
-}
-
-/**
- * Handle window resize
- */
-function handleResize() {
-  if (camera && renderer) {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  }
-}
-
-/**
- * Toggle between player and builder modes
- */
-function toggleGameMode() {
-  const previousMode = builderMode ? 'builder' : 'player';
-  console.log(`Toggling game mode. Previous mode: ${previousMode}`);
-  
-  if (builderMode) {
-    console.log("Exiting builder mode...");
-    exitBuilderMode();
-  } else {
-    console.log("Entering builder mode...");
-    const lastTemplate = localStorage.getItem(STORAGE_KEYS.BUILDER_TEMPLATE) || "medium";
-    enterBuilderMode(lastTemplate);
-  }
-  
-  const newMode = builderMode ? 'builder' : 'player';
-  // Double-check mode switch was successful
-  // console.log(`Mode after toggle: ${newMode} (changed from ${previousMode})`);
-  // console.log(`localStorage mode: ${localStorage.getItem(STORAGE_KEYS.LAST_MODE)}`);
-  
-  // Check if toggle was effective
-  if (previousMode === newMode) {
-    console.error("Mode did not toggle correctly! Forcing update...");
-    
-    // Force mode change
-    if (newMode === 'player') {
-      builderMode = true;
-      exitBuilderMode();
-    } else {
-      builderMode = false;
-      enterBuilderMode();
-    }
-    
-    console.log(`Forced mode change, now: ${builderMode ? 'builder' : 'player'}`);
-  }
-}
-
-/**
- * Enter builder mode
- */
-function enterBuilderMode(templateSize: string = "medium") {
-  console.log("Entering builder mode with template:", templateSize);
-  builderMode = true;
-  gameStarted = false;
-  courseTemplate = templateSize;
-
-  // Immediately update the localStorage with the current mode
-  localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'builder');
-  localStorage.setItem(STORAGE_KEYS.BUILDER_TEMPLATE, templateSize);
-
-  // Hide player
-  if (player) {
-    player.visible = false;
+    this.currentCourse = null;
   }
 
-  // Reset all controls
-  resetAllControls(keyState, buildControls);
-  
-  // Clear existing environment
-  clearEnvironment(scene);
-  
-  // Skip creating ground since we'll have a platform floor
-  // createGround(scene);
-  
-  // Clear out existing blocks
-  console.log("STORAGE DEBUG - Clearing existing building blocks, current count:", buildingBlocks.length);
-  console.log("STORAGE DEBUG - Platforms array length before clearing:", platforms.length);
-  buildingBlocks = [];
-  platforms = [];
-  console.log("STORAGE DEBUG - Platforms array length after clearing:", platforms.length);
-  
-  // Try to load existing builder state first
-  const savedState = loadBuilderState();
-  
-  // Find the template size
-  let templateSizeValue = TEMPLATE_SIZES.MEDIUM;
-  switch(templateSize) {
-    case "small": templateSizeValue = TEMPLATE_SIZES.SMALL; break;
-    case "large": templateSizeValue = TEMPLATE_SIZES.LARGE; break;
+  private animate() {
+    requestAnimationFrame(() => this.animate());
+    
+    const delta = this.clock.getDelta();
+    const time = this.clock.getElapsedTime();
+    
+    // Update controls
+    this.controls.update();
+    
+    // Update placeholder position in builder mode (no animation)
+    if (this.isBuilderMode && this.placeholderMesh) {
+      this.updatePlaceholderPosition();
+    }
+    
+    // Animate kill zones in builder mode
+    if (this.isBuilderMode && this.currentCourse) {
+      this.animateKillZones(time);
+    }
+    
+    // Update player if in player mode
+    if (!this.isBuilderMode && this.player) {
+      // Pass blocks for collision detection 
+      const blocks = this.currentCourse ? this.currentCourse.blocks : [];
+      this.player.update(delta, time, blocks);
+    }
+    
+    // Render
+    this.renderer.render(this.scene, this.camera);
   }
-  
-  // Create builder grid for accurate placement
-  createBuilderGrid(scene, templateSizeValue);
-  
-  if (savedState && savedState.blocks && savedState.blocks.length > 0) {
-    console.log("STORAGE DEBUG - Loading previous builder state with", savedState.blocks.length, "blocks");
+
+  // Animate kill zones to make them more visible
+  private animateKillZones(time: number) {
+    if (!this.currentCourse) return;
     
-    // Recreate blocks from saved state (buildingBlocks already cleared above)
-    savedState.blocks.forEach((blockData: BlockData, index: number) => {
-      console.log(`STORAGE DEBUG - Loading block ${index} of type: ${blockData.type} at position:`, blockData.position);
-      let geometry, material;
-      
-      switch(blockData.type) {
-        case "start":
-          geometry = new THREE.BoxGeometry(
-            BLOCK_TYPES.START.size.width, 
-            BLOCK_TYPES.START.size.height, 
-            BLOCK_TYPES.START.size.depth
-          );
-          material = new THREE.MeshStandardMaterial({ 
-            color: BLOCK_TYPES.START.color,
-            roughness: 0.7
-          });
-          break;
-        case "finish":
-          geometry = new THREE.BoxGeometry(
-            BLOCK_TYPES.FINISH.size.width, 
-            BLOCK_TYPES.FINISH.size.height, 
-            BLOCK_TYPES.FINISH.size.depth
-          );
-          material = new THREE.MeshStandardMaterial({ 
-            color: BLOCK_TYPES.FINISH.color,
-            roughness: 0.7
-          });
-          break;
-        case "floor":
-          geometry = new THREE.BoxGeometry(
-            BLOCK_TYPES.FLOOR_PLATFORM.size.width, 
-            BLOCK_TYPES.FLOOR_PLATFORM.size.height, 
-            BLOCK_TYPES.FLOOR_PLATFORM.size.depth
-          );
-          material = new THREE.MeshStandardMaterial({ 
-            color: BLOCK_TYPES.FLOOR_PLATFORM.color,
-            roughness: 0.7
-          });
-          break;
-        case "platform":
-        default:
-          geometry = new THREE.BoxGeometry(
-            BLOCK_TYPES.PLATFORM.size.width, 
-            BLOCK_TYPES.PLATFORM.size.height, 
-            BLOCK_TYPES.PLATFORM.size.depth
-          );
-          material = new THREE.MeshStandardMaterial({ 
-            color: BLOCK_TYPES.PLATFORM.color,
-            roughness: 0.7
-          });
-      }
-      
-      const block = new THREE.Mesh(geometry, material);
-      block.position.set(blockData.position.x, blockData.position.y, blockData.position.z);
-      block.userData = { type: blockData.type };
-      block.castShadow = true;
-      block.receiveShadow = true;
-      
-      scene.add(block);
-      buildingBlocks.push(block);
-      
-      // Add to platforms for collision detection
-      if (!platforms.includes(block)) {
-        platforms.push(block);
-      }
-    });
-    
-    // Restore camera position if saved
-    if (savedState.cameraPosition) {
-      camera.position.set(
-        savedState.cameraPosition.x,
-        savedState.cameraPosition.y,
-        savedState.cameraPosition.z
-      );
-    } else {
-      camera.position.set(0, 10, 20);
-    }
-    
-    // Restore camera rotation if saved
-    if (savedState.cameraRotation) {
-      camera.rotation.set(
-        savedState.cameraRotation.x,
-        savedState.cameraRotation.y,
-        savedState.cameraRotation.z
-      );
-    } else {
-      camera.rotation.set(-0.3, 0, 0);
-    }
-    
-    // Restore tool and block type
-    if (savedState.selectedTool) {
-      currentBuilderTool = savedState.selectedTool;
-    }
-    
-    if (savedState.selectedBlockType) {
-      selectedBlockType = savedState.selectedBlockType;
-    }
-    
-  } else {
-    // Setup a new course template if no saved state exists
-    console.log("No saved builder state found, creating new template");
-    buildingBlocks = setupCourseTemplate(scene, templateSize);
-    
-    // Add all building blocks to platforms for collision detection
-    buildingBlocks.forEach(block => {
-      if (!platforms.includes(block)) {
-        platforms.push(block);
-      }
-    });
-    
-    // Set better initial camera position for viewing the template
-    const initialCameraSetup = getInitialCameraPosition(templateSize);
-    camera.position.copy(initialCameraSetup.position);
-    camera.rotation.copy(initialCameraSetup.rotation);
-  }
-  
-  // Always ensure camera rotation order is set correctly
-  camera.rotation.order = "YXZ"; // Set rotation order to prevent gimbal lock
-  
-  // Setup UI and event listeners
-  const container = document.getElementById("game-container");
-  if (container) {
-    createBuilderUI(
-      selectedBlockType,
-      buildingBlocks,
-      exitBuilderMode,
-      () => saveCourse(buildingBlocks, courseTemplate),
-      (blockType: string) => {
-        selectedBlockType = blockType;
-        if (placementPreview) {
-          scene.remove(placementPreview);
-        }
-        placementPreview = createPlacementPreview(scene, selectedBlockType);
+    for (const block of this.currentCourse.blocks) {
+      if ((block.type === 'killZone' || block.type === 'killZoneLarge') && block.mesh) {
+        // Pulse the opacity between 0.3 and 0.7
+        const opacity = 0.3 + (Math.sin(time * 3) + 1) * 0.2;
         
-        // Switch to build tool when changing block type
-        currentBuilderTool = "build";
-        updateToolbarSelection(currentBuilderTool);
-        
-        // Save state
-        saveBuilderState(
-          builderMode,
-          courseTemplate,
-          camera,
-          currentBuilderTool,
-          selectedBlockType,
-          buildingBlocks
-        );
-      }
-    );
-    
-    createBuilderToolbar(
-      currentBuilderTool,
-      (tool: string) => {
-        // If switching away from remove tool, clear any highlighted blocks
-        if (currentBuilderTool === "remove" && tool !== "remove") {
-          // Reset all previously highlighted blocks
-          buildingBlocks.forEach(block => {
-            if (block.userData.originalMaterial) {
-              block.material = block.userData.originalMaterial;
-              delete block.userData.originalMaterial;
+        if (block.mesh instanceof THREE.Mesh) {
+          const material = block.mesh.material as THREE.MeshLambertMaterial;
+          if (material.transparent) {
+            material.opacity = opacity;
+          }
+        } else if (block.mesh instanceof THREE.Group) {
+          // Handle the base mesh opacity
+          if (block.mesh.children.length > 0) {
+            const baseMesh = block.mesh.children[0];
+            if (baseMesh instanceof THREE.Mesh) {
+              const material = baseMesh.material as THREE.MeshLambertMaterial;
+              if (material.transparent) {
+                material.opacity = opacity;
+              }
             }
+          }
+          
+          // Animate the warning triangles
+          for (let i = 1; i < block.mesh.children.length; i++) {
+            const triangle = block.mesh.children[i];
+            if (triangle instanceof THREE.Mesh) {
+              // Get the original Y position and random phase stored during creation
+              const originalY = (triangle as any).originalY || 0.3;
+              const randomPhase = (triangle as any).randomPhase || 0;
+              
+              // Float up and down with a slight random phase difference
+              triangle.position.y = originalY + Math.sin(time * 2 + randomPhase) * 0.1;
+              
+              // Rotate slowly 
+              triangle.rotation.y = time * 0.5 + randomPhase;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private updatePlaceholder() {
+    // Remove existing placeholder if it exists
+    if (this.placeholderMesh) {
+      this.scene.remove(this.placeholderMesh);
+      this.placeholderMesh = null;
+    }
+    
+    // Reset height offset when changing block type
+    this.placeholderHeightOffset = 0;
+    
+    // Create new placeholder if a block type is selected
+    if (this.selectedBlockType && this.isBuilderMode) {
+      this.placeholderMesh = this.blockFactory.createPlaceholder(this.selectedBlockType);
+      if (this.placeholderMesh) {
+        this.scene.add(this.placeholderMesh);
+        
+        // Initial position update
+        this.updatePlaceholderPosition();
+      }
+    }
+  }
+  
+  private updatePlaceholderPosition() {
+    if (!this.placeholderMesh || !this.selectedBlockType) return;
+    
+    // Get the intersection point on the grid or any object in the scene
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const intersects = this.raycaster.intersectObjects(this.scene.children);
+    
+    // Skip if no intersections are found
+    if (intersects.length === 0) return;
+    
+    // Get the first valid intersection
+    let validIntersection = null;
+    for (const intersect of intersects) {
+      // Skip the placeholder itself and its children
+      if (intersect.object === this.placeholderMesh || 
+          (this.placeholderMesh instanceof THREE.Group && this.placeholderMesh.children.includes(intersect.object))) {
+        continue;
+      }
+      
+      // Valid intersection found
+      validIntersection = intersect;
+      break;
+    }
+    
+    if (!validIntersection) return;
+    
+    // Calculate position (snap to grid)
+    const position = new THREE.Vector3().copy(validIntersection.point);
+    
+    // Round to nearest grid point to ensure proper alignment
+    position.x = Math.round(position.x);
+    position.z = Math.round(position.z);
+    
+    // Get block definition
+    const blockDef = this.blockFactory.getBlockDefinition(this.selectedBlockType);
+    
+    // Check if we're placing on an existing block or the ground
+    const isExistingBlock = validIntersection.object !== this.gridHelper && 
+                           !(validIntersection.object instanceof THREE.GridHelper);
+    
+    if (isExistingBlock) {
+      // If we're placing on a block, adjust y position based on intersection point
+      // and add half of the new block's height for proper positioning
+      position.y = validIntersection.point.y + blockDef.dimensions.y / 2;
+      
+      // Check if we're placing on top or on the side of a block
+      // Calculate the normal of the face that was hit
+      const normal = validIntersection.face?.normal;
+      
+      if (normal) {
+        // Convert the normal to world space
+        const worldNormal = normal.clone().transformDirection(validIntersection.object.matrixWorld);
+        
+        // If the normal is pointing up (y is close to 1), we're placing on top
+        if (worldNormal.y > 0.5) {
+          // We're on top, use the above calculation
+        } else {
+          // We're on the side, position the block next to the existing one
+          // Move the block in the direction of the normal
+          const existingBlockDef = this.getBlockDefForObject(validIntersection.object);
+          if (existingBlockDef) {
+            // Calculate how much to move based on the block dimensions
+            const moveX = worldNormal.x * ((existingBlockDef.dimensions.x + blockDef.dimensions.x) / 2);
+            const moveZ = worldNormal.z * ((existingBlockDef.dimensions.z + blockDef.dimensions.z) / 2);
             
-            // Remove any outline effect
-            const outline = block.children.find(child => child.userData?.type === 'outline');
-            if (outline) {
-              block.remove(outline);
-            }
-          });
-          
-          // Clear the targeted block reference
-          window.__targetedBlockForRemoval = null;
+            // Apply the movement
+            position.x += moveX;
+            position.z += moveZ;
+            
+            // Set y to match the existing block's y level for side placement
+            // Get the y center of the existing block
+            const existingBlockY = validIntersection.object.position.y;
+            position.y = existingBlockY;
+          }
         }
-        
-        currentBuilderTool = tool;
-        updateToolbarSelection(currentBuilderTool);
-        
-        // Show/hide placement preview based on tool
-        if (placementPreview) {
-          placementPreview.visible = tool === "build";
-        }
-        
-        // Update crosshair appearance based on tool
-        updateCrosshair(tool);
-        
-        // Save state when tool changes
-        saveBuilderState(
-          builderMode,
-          courseTemplate,
-          camera,
-          currentBuilderTool,
-          selectedBlockType,
-          buildingBlocks
-        );
       }
+    } else {
+      // We're placing on the ground grid
+      position.y = blockDef.dimensions.y / 2;
+    }
+    
+    // Apply height offset for manual adjustment (using Q/E keys)
+    position.y += this.placeholderHeightOffset;
+    
+    // Update placeholder position
+    this.placeholderMesh.position.copy(position);
+    
+    // Check if placement is valid
+    this.canPlaceBlock = this.isValidPlacement(position);
+    
+    // Use the factory to update the placeholder appearance
+    this.blockFactory.highlightPlaceholder(
+      this.selectedBlockType, 
+      this.placeholderMesh, 
+      this.canPlaceBlock
     );
     
-    // Create crosshair for build/remove modes
-    createCrosshair();
-    updateCrosshair(currentBuilderTool);
-    
-    createBuilderDebugUI(buildControls);
-    
-    // Setup mouse handlers
-    setupBuilderMouseHandlers(
-      container,
-      camera,
-      () => {
-        // Update placement preview on mouse move, always run regardless of tool mode
-        if (placementPreview) {
-          // Important: Use spread operator to create a new array instead of referring to the same objects
-          // This ensures we don't accidentally have duplicate blocks in our intersectables list
-          const allObjects = [];
-          
-          // Add building blocks to intersectables (for preview placement)
-          buildingBlocks.forEach(block => {
-            allObjects.push(block);
-          });
-          
-          // Add any platforms that aren't already in buildingBlocks (from environment)
-          platforms.forEach(platform => {
-            // Only add if it's not already in our list (avoid duplicates)
-            if (!buildingBlocks.includes(platform)) {
-              allObjects.push(platform);
-            }
-          });
-          
-          // Add ground if it exists
-          const ground = scene.children.find(child => 
-            child instanceof THREE.Mesh && child.name === "Ground");
-          if (ground && ground instanceof THREE.Mesh) {
-            allObjects.push(ground);
-          }
-          
-          updatePlacementPreview(camera, placementPreview, allObjects);
-          
-          // Make sure visibility matches the current tool
-          placementPreview.visible = currentBuilderTool === "build";
-        }
-      },
-      () => {
-        // Place block function - only execute if in build mode
-        if (currentBuilderTool === "build" && !isPlacingBlock) {
-          console.log("BLOCK COUNTER DEBUG - Before placing block:", buildingBlocks.length);
-          isPlacingBlock = true;
-          
-          if (!placementPreview) {
-            console.error("Placement preview is null when trying to place block");
-            isPlacingBlock = false;
-            return;
-          }
-          
-          // Make sure the preview is visible
-          if (!placementPreview.visible) {
-            placementPreview.visible = true;
-          }
-          
-          placeBlock(scene, placementPreview, selectedBlockType, buildingBlocks, platforms);
-          console.log("BLOCK COUNTER DEBUG - After placing block:", buildingBlocks.length);
-          console.log("BLOCK COUNTER DEBUG - Platforms array length:", platforms.length);
-          isPlacingBlock = false;
-        } else {
-          // console.log("Not placing block. Tool:", currentBuilderTool, "isPlacingBlock:", isPlacingBlock);
-        }
-      },
-      () => {
-        // Remove block function - only execute if in remove mode
-        if (currentBuilderTool === "remove" && !isPlacingBlock) {
-          // console.log("Attempting to remove block");
-          isPlacingBlock = true;
-          removeBlock(scene, buildingBlocks, platforms);
-          // console.log("Block removed, remaining blocks:", buildingBlocks.length);
-          isPlacingBlock = false;
-        } else {
-          // console.log("Not removing block. Tool:", currentBuilderTool, "isPlacingBlock:", isPlacingBlock);
-        }
-      }
-    );
-    
-    // Add mobile controls if on mobile
-    if (isMobile) {
-      setupMobileBuilderControls(container, buildControls);
-    }
+    // Set rotation of placeholder
+    this.placeholderMesh.rotation.y = THREE.MathUtils.degToRad(this.rotationAngle);
   }
   
-  // Create placement preview
-  if (placementPreview) {
-    scene.remove(placementPreview);
-  }
-  placementPreview = createPlacementPreview(scene, selectedBlockType);
-  
-  // Save initial builder state
-  saveBuilderState(
-    builderMode,
-    courseTemplate,
-    camera,
-    currentBuilderTool,
-    selectedBlockType,
-    buildingBlocks
-  );
-  
-  console.log("Builder mode entered successfully");
-  
-  // Show notification
-  showNotification("Builder Mode Activated", 3000);
-}
-
-/**
- * Exit builder mode
- */
-function exitBuilderMode() {
-  console.log("Exiting builder mode");
-  
-  // Save current builder state before exiting
-  saveBuilderState(
-    true, // Still true at this point
-    courseTemplate,
-    camera,
-    currentBuilderTool,
-    selectedBlockType,
-    buildingBlocks
-  );
-  
-  // Clear any highlighted blocks from the remove tool
-  buildingBlocks.forEach(block => {
-    if (block.userData.originalMaterial) {
-      block.material = block.userData.originalMaterial;
-      delete block.userData.originalMaterial;
-    }
+  // Helper method to get block definition for an object
+  private getBlockDefForObject(object: THREE.Object3D): BlockDefinition | null {
+    if (!this.currentCourse) return null;
     
-    // Remove any outline effect and cancel animations
-    const outline = block.children.find(child => child.userData?.type === 'outline');
-    if (outline) {
-      // Cancel any ongoing animation
-      if (outline.userData && outline.userData.animationFrameId) {
-        cancelAnimationFrame(outline.userData.animationFrameId);
-      }
-      block.remove(outline);
-    }
-  });
-  
-  // Clear the global targeted block reference
-  window.__targetedBlockForRemoval = null;
-  
-  builderMode = false;
-  gameStarted = true;
-  
-  // Immediately update the localStorage with the current mode
-  localStorage.setItem(STORAGE_KEYS.LAST_MODE, 'player');
-  
-  // Remove builder UI elements
-  removeElement("builder-ui");
-  removeElement("builder-toolbar");
-  removeElement("builder-debug");
-  removeElement("movement-pad");
-  removeElement("builder-crosshair");
-  
-  // Remove placement preview
-  if (placementPreview) {
-    scene.remove(placementPreview);
-    placementPreview = null;
-  }
-  
-  // Reset all controls
-  resetAllControls(keyState, buildControls);
-  
-  // Reset player state
-  playerState = resetPlayerState();
-  
-  // Reset cursor style
-  const gameContainer = document.getElementById("game-container");
-  if (gameContainer) {
-    gameContainer.style.cursor = "default";
-  }
-  
-  // Check if player exists and make it visible
-  if (player) {
-    player.visible = true;
-    player.position.set(0, 1, 0);
-  } else {
-    // If no player exists yet, create a placeholder player
-    console.log("No player found, creating placeholder character");
-    import('./systems/player.js').then(playerModule => {
-      player = playerModule.createPlaceholderPlayer(scene);
-      mixer = null;
-      actions = {
-        idle: null,
-        running: null,
-        jumping: null
-      };
-    }).catch(error => {
-      console.error("Failed to create placeholder player:", error);
-    });
-  }
-  
-  // Reset camera
-  camera.position.copy(CAMERA_SETTINGS.DEFAULT_POSITION);
-  camera.rotation.copy(CAMERA_SETTINGS.DEFAULT_ROTATION);
-  
-  console.log("Builder mode exited successfully, now in player mode");
-  
-  // Show notification
-  showNotification("Player Mode Activated", 3000);
-}
-
-/**
- * Handle received course data
- */
-function handleCourseData(courseData: any): void {
-  console.log("Received course data:", courseData);
-  
-  // Clear any highlighted blocks
-  window.__targetedBlockForRemoval = null;
-  
-  // Clear existing environment
-  clearEnvironment(scene);
-  
-  // Create ground
-  createGround(scene);
-  
-  // Clear existing blocks
-  buildingBlocks = [];
-  platforms = [];
-  
-  // Create blocks from course data
-  if (courseData && courseData.blocks && Array.isArray(courseData.blocks)) {
-    courseData.blocks.forEach((blockData: BlockData, index: number) => {
-      console.log(`Loading course block ${index} of type: ${blockData.type}`);
-      let geometry, material;
-      
-      switch(blockData.type) {
-        case "start":
-          geometry = new THREE.BoxGeometry(
-            BLOCK_TYPES.START.size.width, 
-            BLOCK_TYPES.START.size.height, 
-            BLOCK_TYPES.START.size.depth
-          );
-          material = new THREE.MeshStandardMaterial({ 
-            color: BLOCK_TYPES.START.color,
-            roughness: 0.7
-          });
-          break;
-        case "finish":
-          geometry = new THREE.BoxGeometry(
-            BLOCK_TYPES.FINISH.size.width, 
-            BLOCK_TYPES.FINISH.size.height, 
-            BLOCK_TYPES.FINISH.size.depth
-          );
-          material = new THREE.MeshStandardMaterial({ 
-            color: BLOCK_TYPES.FINISH.color,
-            roughness: 0.7
-          });
-          break;
-        case "floor":
-          geometry = new THREE.BoxGeometry(
-            BLOCK_TYPES.FLOOR_PLATFORM.size.width, 
-            BLOCK_TYPES.FLOOR_PLATFORM.size.height, 
-            BLOCK_TYPES.FLOOR_PLATFORM.size.depth
-          );
-          material = new THREE.MeshStandardMaterial({ 
-            color: BLOCK_TYPES.FLOOR_PLATFORM.color,
-            roughness: 0.7
-          });
-          break;
-        case "platform":
-        default:
-          geometry = new THREE.BoxGeometry(
-            BLOCK_TYPES.PLATFORM.size.width, 
-            BLOCK_TYPES.PLATFORM.size.height, 
-            BLOCK_TYPES.PLATFORM.size.depth
-          );
-          material = new THREE.MeshStandardMaterial({ 
-            color: BLOCK_TYPES.PLATFORM.color,
-            roughness: 0.7
-          });
-      }
-      
-      const block = new THREE.Mesh(geometry, material);
-      block.position.set(blockData.position.x, blockData.position.y, blockData.position.z);
-      block.userData = { type: blockData.type };
-      block.castShadow = true;
-      block.receiveShadow = true;
-      
-      scene.add(block);
-      buildingBlocks.push(block);
-      
-      // Add to platforms for collision detection
-      platforms.push(block);
-    });
+    // Find the block that contains this object
+    let block = this.currentCourse.blocks.find(b => b.mesh === object);
     
-    // If there's a start position, place player there
-    if (courseData.startPosition) {
-      if (player) {
-        player.position.set(
-          courseData.startPosition.x,
-          courseData.startPosition.y,
-          courseData.startPosition.z
-        );
-        player.visible = true;
-      }
-      
-      // Update player state
-      playerState.position.set(
-        courseData.startPosition.x,
-        courseData.startPosition.y,
-        courseData.startPosition.z
+    // If not found directly, check if it's a child of a group
+    if (!block) {
+      block = this.currentCourse.blocks.find(b => 
+        b.mesh instanceof THREE.Group && 
+        b.mesh.children.some(child => child === object)
       );
     }
     
-    // Set game as started
-    gameStarted = true;
-    builderMode = false;
+    if (block) {
+      return this.blockFactory.getBlockDefinition(block.type);
+    }
     
-    // Show notification
-    showNotification("Course loaded! Ready to play!", 3000);
-  } else {
-    console.error("Invalid course data received");
-    showNotification("Error loading course", 3000);
+    return null;
+  }
+
+  private isValidPlacement(position: THREE.Vector3): boolean {
+    if (!this.currentCourse || !this.selectedBlockType) return false;
+    
+    // Get block definition
+    const blockDef = this.blockFactory.getBlockDefinition(this.selectedBlockType);
+    
+    // Check for block limits (Start and Finish)
+    if (blockDef.limit) {
+      const existingCount = this.currentCourse.blocks.filter(
+        block => block.type === this.selectedBlockType
+      ).length;
+      
+      if (existingCount >= blockDef.limit) {
+        return false;
+      }
+    }
+    
+    // Check for template max blocks
+    const template = this.courseManager.getTemplate(this.currentCourse.template);
+    if (this.currentCourse.blocks.length >= template.maxBlocks) {
+      return false;
+    }
+    
+    // Create a box for the new block
+    const newBlockBox = new THREE.Box3();
+    const halfWidth = blockDef.dimensions.x / 2;
+    const halfHeight = blockDef.dimensions.y / 2;
+    const halfDepth = blockDef.dimensions.z / 2;
+    
+    // Special case for garbage bag which needs a smaller collision box
+    const collisionFactor = this.selectedBlockType === 'garbageBag' ? 0.8 : 0.9;
+    
+    newBlockBox.min.set(
+      position.x - halfWidth * collisionFactor,
+      position.y - halfHeight * collisionFactor,
+      position.z - halfDepth * collisionFactor
+    );
+    
+    newBlockBox.max.set(
+      position.x + halfWidth * collisionFactor,
+      position.y + halfHeight * collisionFactor,
+      position.z + halfDepth * collisionFactor
+    );
+    
+    // Check for collision with other blocks
+    for (const block of this.currentCourse.blocks) {
+      if (!block.mesh) continue;
+      
+      // Create a box for the existing block
+      const existingBlockDef = this.blockFactory.getBlockDefinition(block.type);
+      const existingBlockBox = new THREE.Box3();
+      const exHalfWidth = existingBlockDef.dimensions.x / 2;
+      const exHalfHeight = existingBlockDef.dimensions.y / 2;
+      const exHalfDepth = existingBlockDef.dimensions.z / 2;
+      
+      // Adjust collision factor for garbage bags
+      const exCollisionFactor = block.type === 'garbageBag' ? 0.8 : 0.9;
+      
+      existingBlockBox.min.set(
+        block.position.x - exHalfWidth * exCollisionFactor,
+        block.position.y - exHalfHeight * exCollisionFactor,
+        block.position.z - exHalfDepth * exCollisionFactor
+      );
+      
+      existingBlockBox.max.set(
+        block.position.x + exHalfWidth * exCollisionFactor,
+        block.position.y + exHalfHeight * exCollisionFactor,
+        block.position.z + exHalfDepth * exCollisionFactor
+      );
+      
+      // Check if boxes intersect
+      if (newBlockBox.intersectsBox(existingBlockBox)) {
+        // Now check if this is a valid stacking situation
+        
+        // Calculate vertical overlap
+        const verticalOverlap = Math.min(
+          newBlockBox.max.y - existingBlockBox.min.y,
+          existingBlockBox.max.y - newBlockBox.min.y
+        );
+        
+        // Calculate horizontal overlap along X and Z
+        const xOverlap = Math.min(
+          newBlockBox.max.x - existingBlockBox.min.x,
+          existingBlockBox.max.x - newBlockBox.min.x
+        );
+        
+        const zOverlap = Math.min(
+          newBlockBox.max.z - existingBlockBox.min.z,
+          existingBlockBox.max.z - newBlockBox.min.z
+        );
+        
+        const xyArea = existingBlockDef.dimensions.x * existingBlockDef.dimensions.z;
+        const overlapArea = xOverlap * zOverlap;
+        
+        // Check if this is a stacking situation (small vertical overlap, significant horizontal overlap)
+        const isStacking = verticalOverlap < 0.3 * existingBlockDef.dimensions.y && 
+                          overlapArea > 0.2 * xyArea;
+        
+        // Allow stacking, but prevent true overlaps
+        if (!isStacking) {
+          return false;
+        }
+      }
+    }
+    
+    return true;
+  }
+
+  private highlightBlockForDeletion() {
+    // Reset previous highlighted block
+    if (this.highlightedBlock) {
+      this.highlightedBlock.unhighlight();
+      this.highlightedBlock = null;
+    }
+    
+    if (!this.currentCourse) return;
+    
+    // Cast a ray to find which block we're pointing at
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const intersects = this.raycaster.intersectObjects(this.scene.children, true); // true for recursive (check children)
+    
+    for (const intersect of intersects) {
+      // Skip grid, placeholders, etc.
+      if (!(intersect.object instanceof THREE.Mesh) || 
+          intersect.object === this.placeholderMesh || 
+          (this.placeholderMesh instanceof THREE.Group && this.placeholderMesh.children.includes(intersect.object)) ||
+          intersect.object instanceof THREE.GridHelper) continue;
+      
+      // Find the block that matches this mesh or is parent of this mesh
+      let block = this.currentCourse.blocks.find(b => b.mesh === intersect.object);
+      
+      // If not found directly, check if it's a child of a group
+      if (!block) {
+        block = this.currentCourse.blocks.find(b => 
+          b.mesh instanceof THREE.Group && 
+          b.mesh.children.some(child => child === intersect.object)
+        );
+      }
+      
+      if (block) {
+        // Store the highlighted block
+        this.highlightedBlock = block;
+        
+        // Highlight the block using its built-in method
+        block.highlight(this.deleteMaterial);
+        break;
+      }
+    }
+  }
+
+  private deleteHighlightedBlock() {
+    if (!this.currentCourse || !this.highlightedBlock) return;
+    
+    const blockIndex = this.currentCourse.blocks.findIndex(
+      block => block === this.highlightedBlock
+    );
+    
+    if (blockIndex >= 0) {
+      const block = this.currentCourse.blocks[blockIndex];
+      
+      // If this is also the selected block, clear that reference first
+      if (this.selectedBlock === block) {
+        this.ui.updateSelectedBlockTooltip(false);
+        this.selectedBlock = null;
+      }
+      
+      // Unhighlight before removing
+      block.unhighlight();
+      
+      // Remove from scene
+      if (block.mesh) {
+        this.scene.remove(block.mesh);
+      }
+      
+      // Remove from blocks array
+      this.currentCourse.blocks.splice(blockIndex, 1);
+      
+      // Update start/finish positions if needed
+      if (block.type === 'start') {
+        this.currentCourse.startPosition = { x: 0, y: 0, z: 0 };
+      } else if (block.type === 'finish') {
+        this.currentCourse.finishPosition = { x: 0, y: 0, z: 0 };
+      }
+      
+      // Clear the highlighted block
+      this.highlightedBlock = null;
+      
+      // Update block counter
+      this.updateBlockCounter();
+    }
+  }
+
+  private highlightBlockForSelection() {
+    // Reset previous highlighted block (but not if it's the selected block)
+    if (this.highlightedBlock && this.highlightedBlock !== this.selectedBlock) {
+      this.highlightedBlock.unhighlight();
+      this.highlightedBlock = null;
+    }
+    
+    if (!this.currentCourse) return;
+    
+    // Cast a ray to find which block we're pointing at
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const intersects = this.raycaster.intersectObjects(this.scene.children, true);
+    
+    for (const intersect of intersects) {
+      // Skip grid, placeholders, etc.
+      if (!(intersect.object instanceof THREE.Mesh) || 
+          intersect.object === this.placeholderMesh || 
+          (this.placeholderMesh instanceof THREE.Group && this.placeholderMesh.children.includes(intersect.object)) ||
+          intersect.object instanceof THREE.GridHelper) continue;
+      
+      // Find the block that matches this mesh or is parent of this mesh
+      let block = this.currentCourse.blocks.find(b => b.mesh === intersect.object);
+      
+      // If not found directly, check if it's a child of a group
+      if (!block) {
+        block = this.currentCourse.blocks.find(b => 
+          b.mesh instanceof THREE.Group && 
+          b.mesh.children.some(child => child === intersect.object)
+        );
+      }
+      
+      if (block) {
+        // If we're hovering over the already selected block, just return without highlighting
+        if (block === this.selectedBlock) {
+          return;
+        }
+        
+        // Store the highlighted block
+        this.highlightedBlock = block;
+        
+        // Highlight with selection material
+        block.highlight(this.selectionMaterial);
+        break;
+      }
+    }
+  }
+
+  private selectHighlightedBlock() {
+    // If we're selecting the same block that's already selected, deselect it
+    if (this.selectedBlock === this.highlightedBlock) {
+      this.clearSelection();
+      return;
+    }
+    
+    // Clear previous selection
+    if (this.selectedBlock) {
+      this.clearSelection();
+    }
+    
+    // Select the currently highlighted block
+    if (this.highlightedBlock) {
+      // Store the reference to the highlighted block
+      this.selectedBlock = this.highlightedBlock;
+      
+      // Clear the highlighted block reference to avoid duplicate highlighting
+      this.highlightedBlock = null;
+      
+      // Make sure the block's original materials are reset before applying new highlight
+      this.selectedBlock.unhighlight();
+      
+      // Apply the selection highlight
+      this.selectedBlock.highlight(this.selectionMaterial);
+      
+      // Update the tooltip below the selected block
+      if (this.selectedBlock.mesh) {
+        // Create a position vector from the block's position
+        const blockPosition = new THREE.Vector3(
+          this.selectedBlock.position.x, 
+          this.selectedBlock.position.y,
+          this.selectedBlock.position.z
+        );
+        
+        // Project the 3D position to screen coordinates
+        const screenPosition = blockPosition.clone().project(this.camera);
+        
+        // Convert to pixel coordinates
+        const canvas = this.renderer.domElement;
+        const x = (screenPosition.x + 1) * canvas.width / 2;
+        const y = (-screenPosition.y + 1) * canvas.height / 2;
+        
+        // Update tooltip with computed screen coordinates
+        this.ui.updateSelectedBlockTooltipPosition(x, y);
+      }
+    }
+  }
+
+  private rotateSelectedBlock() {
+    if (!this.selectedBlock || !this.selectedBlock.mesh) return;
+    
+    // Rotate the selected block by 90 degrees
+    const currentRotation = this.selectedBlock.rotation;
+    const newYRotation = (currentRotation.y + 90) % 360;
+    
+    // Update the rotation in the block data
+    this.selectedBlock.rotation.y = newYRotation;
+    
+    // Apply rotation to the mesh
+    this.selectedBlock.mesh.rotation.y = THREE.MathUtils.degToRad(newYRotation);
+  }
+
+  // Update the tool selection method
+  public setTool(tool: string) {
+    const previousTool = this.currentTool;
+    this.currentTool = tool;
+    
+    // Reset height offset when changing tools
+    this.placeholderHeightOffset = 0;
+    
+    // Hide placeholder when not in build mode
+    if (tool !== 'build' && this.placeholderMesh) {
+      this.scene.remove(this.placeholderMesh);
+      this.placeholderMesh = null;
+    }
+    
+    // Restore placeholder if switching to build mode
+    if (tool === 'build' && this.selectedBlockType && !this.placeholderMesh) {
+      this.updatePlaceholder();
+    }
+    
+    // Reset any highlighted blocks if switching away from delete tool
+    if (previousTool === 'delete' && this.highlightedBlock) {
+      this.highlightedBlock.unhighlight();
+      this.highlightedBlock = null;
+    }
+    
+    // Clear selected block if switching away from select tool
+    if (previousTool === 'select') {
+      this.clearSelection();
+    }
+    
+    // Ensure tooltip is hidden when not in select mode
+    if (tool !== 'select') {
+      this.ui.updateSelectedBlockTooltip(false);
+    }
+  }
+
+  private clearSelection() {
+    if (this.selectedBlock) {
+      this.selectedBlock.unhighlight();
+      this.selectedBlock = null;
+      this.ui.updateSelectedBlockTooltip(false);
+    }
+    
+    // Also clear any highlighted blocks to ensure clean state
+    if (this.highlightedBlock) {
+      this.highlightedBlock.unhighlight();
+      this.highlightedBlock = null;
+    }
+  }
+
+  private setupToolbar() {
+    const toolButtons = document.querySelectorAll('.tool-btn');
+    
+    toolButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tool = btn.getAttribute('data-tool') || 'build';
+        this.setTool(tool);
+      });
+    });
+    
+    // Create toast element for showing controls
+    this.toast = document.createElement('div');
+    this.toast.classList.add('controls-toast');
+    this.toast.style.position = 'fixed';
+    this.toast.style.top = '70px'; // Just below the header
+    this.toast.style.left = '50%';
+    this.toast.style.transform = 'translateX(-50%)';
+    this.toast.style.backgroundColor = '#333';
+    this.toast.style.color = 'white';
+    this.toast.style.padding = '10px 20px';
+    this.toast.style.borderRadius = '4px';
+    this.toast.style.fontSize = '12px';
+    this.toast.style.fontFamily = 'Press Start 2P, monospace';
+    this.toast.style.zIndex = '1000';
+    this.toast.style.border = '2px solid #4CAF50';
+    this.toast.style.display = 'none';
+    this.toast.style.textAlign = 'center';
+    this.toast.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+    document.body.appendChild(this.toast);
+    
+    // Create tooltip for selected block
+    this.selectedBlockTooltip = document.createElement('div');
+    this.selectedBlockTooltip.classList.add('selected-block-tooltip');
+    this.selectedBlockTooltip.style.position = 'absolute';
+    this.selectedBlockTooltip.style.backgroundColor = '#333';
+    this.selectedBlockTooltip.style.color = 'white';
+    this.selectedBlockTooltip.style.padding = '8px';
+    this.selectedBlockTooltip.style.borderRadius = '4px';
+    this.selectedBlockTooltip.style.fontSize = '12px';
+    this.selectedBlockTooltip.style.fontFamily = 'Press Start 2P, monospace';
+    this.selectedBlockTooltip.style.pointerEvents = 'none';
+    this.selectedBlockTooltip.style.zIndex = '1000';
+    this.selectedBlockTooltip.style.border = '2px solid #4CAF50';
+    this.selectedBlockTooltip.style.display = 'none';
+    this.selectedBlockTooltip.innerHTML = 'R: Rotate Block<br>Delete: Remove Block<br>Esc: Cancel Selection';
+    document.body.appendChild(this.selectedBlockTooltip);
+    
+    // Select build tool by default
+    this.setTool('build');
+  }
+
+  private toggleAtmosphere() {
+    if (this.currentCourse) {
+      const newSettings = {
+        isDayMode: !this.currentCourse.atmosphere.isDayMode
+      };
+      
+      this.currentCourse.atmosphere = newSettings;
+      this.setupAtmosphere(newSettings);
+      
+      // Update the course in the manager
+      this.courseManager.updateAtmosphere(this.currentCourse.id, newSettings);
+      
+      // Update UI to reflect current atmosphere state
+      this.ui.updateAtmosphereToggle(newSettings.isDayMode);
+    }
+  }
+
+  private setupAtmosphere(settings: AtmosphereSettings) {
+    // Remove existing atmosphere elements
+    if (this.skyBox) this.scene.remove(this.skyBox);
+    if (this.clouds) this.scene.remove(this.clouds);
+    if (this.sunMoon) this.scene.remove(this.sunMoon);
+    
+    // Set background color based on day/night mode
+    if (settings.isDayMode) {
+      this.scene.background = new THREE.Color(0x87CEEB); // Light blue sky
+      this.createDaytimeAtmosphere();
+    } else {
+      this.scene.background = new THREE.Color(0x6666FF); // Brighter blue night sky (was 0x0B1026)
+      this.createNighttimeAtmosphere();
+    }
+    
+    // Update lights based on day/night mode
+    this.updateLighting(settings);
+  }
+
+  private createDaytimeAtmosphere() {
+    // Create sun
+    const sunGeometry = new THREE.SphereGeometry(5, 32, 32);
+    const sunMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0xFFFF00,
+      transparent: true,
+      opacity: 0.8
+    });
+    this.sunMoon = new THREE.Mesh(sunGeometry, sunMaterial);
+    this.sunMoon.position.set(50, 100, -100);
+    this.scene.add(this.sunMoon);
+    
+    // Create clouds
+    this.clouds = new THREE.Group();
+    
+    // Create several clouds at different positions
+    for (let i = 0; i < 15; i++) {
+      const cloud = this.createCloud(0xFFFFFF, 0.3); // White, semi-transparent
+      
+      // Position clouds randomly in the sky, but lower than before
+      cloud.position.set(
+        (Math.random() - 0.5) * 200,
+        25 + Math.random() * 20,  // Lower position (was 50 + random * 30)
+        (Math.random() - 0.5) * 200
+      );
+      
+      this.clouds.add(cloud);
+    }
+    
+    this.scene.add(this.clouds);
+  }
+
+  private createNighttimeAtmosphere() {
+    // Create moon
+    const moonGeometry = new THREE.SphereGeometry(5, 32, 32);
+    const moonMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0xDDDDDD,
+      transparent: true,
+      opacity: 0.8
+    });
+    this.sunMoon = new THREE.Mesh(moonGeometry, moonMaterial);
+    this.sunMoon.position.set(50, 100, -100);
+    this.scene.add(this.sunMoon);
+    
+    // Create darker clouds
+    this.clouds = new THREE.Group();
+    
+    // Create several clouds at different positions
+    for (let i = 0; i < 10; i++) {
+      const cloud = this.createCloud(0x777777, 0.5); // Slightly lighter gray, more opaque
+      
+      // Position clouds randomly in the sky, but lower than before
+      cloud.position.set(
+        (Math.random() - 0.5) * 200,
+        25 + Math.random() * 20,  // Lower position (was 50 + random * 30)
+        (Math.random() - 0.5) * 200
+      );
+      
+      this.clouds.add(cloud);
+    }
+    
+    this.scene.add(this.clouds);
+  }
+
+  private createCloud(color: number, opacity: number): THREE.Group {
+    const cloudGroup = new THREE.Group();
+    
+    // Create several overlapping spheres to form a cloud
+    const sphereCount = 5 + Math.floor(Math.random() * 5);
+    const baseSize = 3 + Math.random() * 3;
+    
+    for (let i = 0; i < sphereCount; i++) {
+      const sphereGeometry = new THREE.SphereGeometry(
+        baseSize * (0.6 + Math.random() * 0.4), 
+        8, 8
+      );
+      const sphereMaterial = new THREE.MeshLambertMaterial({
+        color: color,
+        transparent: true,
+        opacity: opacity
+      });
+      const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+      
+      // Arrange spheres in a roughly circular pattern
+      const angle = (i / sphereCount) * Math.PI * 2;
+      const radius = baseSize * 0.8;
+      sphere.position.set(
+        Math.cos(angle) * radius,
+        (Math.random() - 0.5) * baseSize * 0.5,
+        Math.sin(angle) * radius
+      );
+      
+      cloudGroup.add(sphere);
+    }
+    
+    return cloudGroup;
+  }
+
+  private updateLighting(settings: AtmosphereSettings) {
+    if (settings.isDayMode) {
+      // Bright daylight settings
+      this.ambientLight.intensity = 0.5;
+      this.directionalLight.intensity = 0.8;
+      this.directionalLight.color.set(0xFFFFFF);
+      this.directionalLight.position.set(10, 20, 10);
+    } else {
+      // Brighter night lighting settings (increased from previous values)
+      this.ambientLight.intensity = 0.35;  // Increased from 0.2
+      this.directionalLight.intensity = 0.45;  // Increased from 0.3
+      this.directionalLight.color.set(0xCCDDFF); // Slightly bluer tint for moonlight
+      this.directionalLight.position.set(-10, 20, -10);
+    }
   }
 }
 
-// Initialize the game
-console.log("app.js loaded");
-init();
+// Initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+  new ParkourHoboCourseBuilder();
+});

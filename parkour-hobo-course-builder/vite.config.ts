@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: '/parkour-hobo-course-builder/',
+  base: './',
   build: {
     outDir: 'dist',
     sourcemap: true
