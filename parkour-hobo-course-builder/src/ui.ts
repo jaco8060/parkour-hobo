@@ -17,6 +17,7 @@ export class UI {
   private toast: HTMLElement | null = null;
   private selectedBlockTooltip: HTMLElement | null = null;
   private controlsModal: HTMLElement | null = null;
+  private playerControls: HTMLElement;
   
   private courseManager: CourseManager;
   private onNewCourse: ((templateName: string) => void) | undefined;
@@ -28,6 +29,7 @@ export class UI {
   private onToolSelected: ((tool: string) => void) | undefined;
   private onUpdateControls: ((controls: Partial<PlayerControls>) => void) | undefined;
   private toastTimeout: number | null = null;
+  private resetPlayerCallback: (() => void) | null = null;
 
   constructor(courseManager: CourseManager) {
     this.courseManager = courseManager;
@@ -45,10 +47,21 @@ export class UI {
     this.exportModal = document.getElementById('export-modal') as HTMLElement;
     this.exportCode = document.getElementById('export-code') as HTMLTextAreaElement;
     this.toolbar = document.getElementById('toolbar') as HTMLElement;
+    this.playerControls = document.getElementById('player-controls') as HTMLElement;
     
     this.setupEventListeners();
     this.setupExportModalEvents();
     this.setupToolbar();
+
+    // Add this to initialize the reset button click handler
+    const resetPlayerBtn = document.getElementById('reset-player-btn');
+    if (resetPlayerBtn) {
+      resetPlayerBtn.addEventListener('click', () => {
+        if (this.resetPlayerCallback) {
+          this.resetPlayerCallback();
+        }
+      });
+    }
   }
 
   private setupEventListeners() {
@@ -355,12 +368,14 @@ export class UI {
     this.header.classList.remove('hidden');
     this.sideMenu.classList.remove('hidden');
     this.toolbar.classList.remove('hidden');
+    this.playerControls.classList.add('hidden');
     document.body.classList.add('builder-mode');
   }
 
   showPlayerMode() {
     this.header.classList.add('hidden');
     this.sideMenu.classList.add('hidden');
+    this.playerControls.classList.remove('hidden');
     document.body.classList.remove('builder-mode');
   }
 
@@ -707,5 +722,10 @@ export class UI {
   // Add method to set control update callback
   public setOnUpdateControls(callback: (controls: Partial<PlayerControls>) => void) {
     this.onUpdateControls = callback;
+  }
+
+  // Add this new method
+  setOnResetPlayer(callback: () => void) {
+    this.resetPlayerCallback = callback;
   }
 }

@@ -211,6 +211,19 @@ class ParkourHoboCourseBuilder {
       }
       return DEFAULT_CONTROLS;
     };
+
+    this.ui.setOnResetPlayer(() => {
+      if (!this.isBuilderMode && this.player && this.currentCourse) {
+        // Reset player to start position
+        if (this.currentCourse.startPosition) {
+          this.player.setPosition(this.currentCourse.startPosition);
+        } else {
+          // If no start position, reset to origin
+          this.player.setPosition({ x: 0, y: 1, z: 0 });
+        }
+        this.ui.displayToast('Player position reset!', 1500);
+      }
+    });
   }
 
   private setupEventListeners() {
@@ -394,10 +407,7 @@ class ParkourHoboCourseBuilder {
         }
       }
     });
-    
-    window.addEventListener('keyup', (event) => {
-      // No action needed here anymore since player handles its own key events
-    });
+
   }
 
   private toggleMode() {

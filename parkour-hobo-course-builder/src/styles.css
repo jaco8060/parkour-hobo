@@ -563,4 +563,36 @@ body, html {
   }
 }
 
+#player-controls {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 100;
+}
+
+.player-btn {
+  padding: 10px 15px;
+  margin: 5px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  transition: all 0.2s ease;
+}
+
+.player-btn:hover {
+  background-color: #3e8e41;
+  transform: scale(1.05);
+}
+
+.player-btn:active {
+  background-color: #3e8e41;
+  transform: scale(0.95);
+}
+
 

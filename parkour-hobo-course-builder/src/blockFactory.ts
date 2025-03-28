@@ -444,6 +444,103 @@ export class BlockFactory {
       }
     });
 
+    // Register Large Kill Zone
+    this.registerBlockType({
+      type: 'killZoneLarge',
+      dimensions: { x: 6, y: 0.2, z: 6 },
+      color: '#FF0000',
+      previewColor: '#FF000080',
+      createMesh: (position, rotation) => {
+        // Create a group to hold all the elements
+        const killZoneGroup = new THREE.Group();
+        
+        // Create the base transparent red box
+        const geometry = new THREE.BoxGeometry(6, 0.2, 6);
+        const material = new THREE.MeshLambertMaterial({ 
+          color: '#FF0000',
+          transparent: true,
+          opacity: 0.6
+        });
+        
+        const baseMesh = new THREE.Mesh(geometry, material);
+        killZoneGroup.add(baseMesh);
+        
+        // Add visual particles/warning markers
+        const particleMaterial = new THREE.MeshBasicMaterial({ color: '#FF0000' });
+        
+        // Create small warning triangles
+        for (let i = 0; i < 16; i++) {
+          const triangleGeometry = new THREE.ConeGeometry(0.15, 0.3, 3);
+          const triangle = new THREE.Mesh(triangleGeometry, particleMaterial);
+          
+          // Position triangles in a circular pattern around the kill zone
+          const angle = (i / 16) * Math.PI * 2;
+          const radius = 2.5;
+          triangle.position.set(
+            Math.sin(angle) * radius,
+            0.3, // Slightly above the platform
+            Math.cos(angle) * radius
+          );
+          
+          // Point triangles upward
+          triangle.rotation.x = Math.PI;
+          
+          // Store the original Y position for animation
+          (triangle as any).originalY = triangle.position.y;
+          (triangle as any).randomPhase = Math.random() * Math.PI * 2;
+          
+          killZoneGroup.add(triangle);
+        }
+        
+        // Add central warning symbol
+        const centerTriangleGeometry = new THREE.ConeGeometry(0.3, 0.5, 3);
+        const centerTriangle = new THREE.Mesh(centerTriangleGeometry, particleMaterial);
+        centerTriangle.position.set(0, 0.4, 0);
+        centerTriangle.rotation.x = Math.PI;
+        (centerTriangle as any).originalY = centerTriangle.position.y;
+        (centerTriangle as any).randomPhase = 0;
+        killZoneGroup.add(centerTriangle);
+        
+        // Set group position and rotation
+        killZoneGroup.position.set(position.x, position.y, position.z);
+        killZoneGroup.rotation.set(
+          THREE.MathUtils.degToRad(rotation.x),
+          THREE.MathUtils.degToRad(rotation.y),
+          THREE.MathUtils.degToRad(rotation.z)
+        );
+        
+        return killZoneGroup;
+      },
+      createPlaceholder: () => {
+        // Create a group for the placeholder
+        const killZoneGroup = new THREE.Group();
+        
+        // Create the base transparent red box
+        const geometry = new THREE.BoxGeometry(6, 0.2, 6);
+        const material = new THREE.MeshLambertMaterial({ 
+          color: '#FF000080',
+          transparent: true,
+          opacity: 0.5,
+          depthWrite: false
+        });
+        
+        const baseMesh = new THREE.Mesh(geometry, material);
+        killZoneGroup.add(baseMesh);
+        
+        return killZoneGroup;
+      },
+      highlightPlaceholder: (mesh, isValid) => {
+        if (mesh instanceof THREE.Group && mesh.children.length > 0) {
+          const baseMesh = mesh.children[0];
+          if (baseMesh instanceof THREE.Mesh) {
+            const material = baseMesh.material as THREE.MeshLambertMaterial;
+            material.opacity = isValid ? 0.5 : 0.7;
+            material.color.set(isValid ? '#FF000080' : '#FF0000');
+          }
+        }
+      }
+    });
+
     // Register Start
     this.registerBlockType({
       type: 'start',

@@ -57,23 +57,59 @@ export class Player {
     // Store initial position as respawn point
     this.respawnPosition = {...position};
     
-    // Body
+    // Body - ragged clothes (darker, tattered look)
     const bodyGeometry = new THREE.BoxGeometry(0.5, 0.7, 0.3);
-    const bodyMaterial = new THREE.MeshBasicMaterial({ color: 0x965A3E });
+    const bodyMaterial = new THREE.MeshBasicMaterial({ color: 0x4D3B21 }); // Darker brown for worn clothes
     this.body = new THREE.Mesh(bodyGeometry, bodyMaterial);
     this.body.position.y = 0.35;
     this.mesh.add(this.body);
 
-    // Head
+    // Create tattered clothing patches on the body
+    const addPatch = (x: number, y: number, z: number, width: number, height: number, depth: number) => {
+      const patchGeometry = new THREE.BoxGeometry(width, height, depth);
+      const patchMaterial = new THREE.MeshBasicMaterial({ color: 0x5D4037 }); // Slightly different brown
+      const patch = new THREE.Mesh(patchGeometry, patchMaterial);
+      patch.position.set(x, y, z);
+      this.body.add(patch);
+    };
+
+    // Add patches to simulate tattered clothes
+    addPatch(0.1, 0.1, 0.16, 0.2, 0.2, 0.01);
+    addPatch(-0.15, -0.2, 0.16, 0.15, 0.15, 0.01);
+    addPatch(0.18, -0.1, 0.16, 0.1, 0.25, 0.01);
+
+    // Head - with dirt/grunginess
     const headGeometry = new THREE.BoxGeometry(0.4, 0.4, 0.4);
-    const headMaterial = new THREE.MeshBasicMaterial({ color: 0xE0AC69 });
+    const headMaterial = new THREE.MeshBasicMaterial({ color: 0xC8A080 }); // Slightly dirty skin tone
     this.head = new THREE.Mesh(headGeometry, headMaterial);
     this.head.position.y = 0.95;
     this.mesh.add(this.head);
 
-    // Legs
+    // Add a simpler beanie hat on top of the head
+    const beanieGeometry = new THREE.BoxGeometry(0.44, 0.15, 0.44);
+    const beanieMaterial = new THREE.MeshBasicMaterial({ color: 0x8B4513 }); // Deep brown beanie
+    const beanie = new THREE.Mesh(beanieGeometry, beanieMaterial);
+    beanie.position.y = 0.25; // Position on top of the head
+    this.head.add(beanie);
+
+    // Add beanie fold/rim
+    const beanieRimGeometry = new THREE.BoxGeometry(0.45, 0.08, 0.45);
+    const beanieRimMaterial = new THREE.MeshBasicMaterial({ color: 0x654321 }); // Darker rim
+    const beanieRim = new THREE.Mesh(beanieRimGeometry, beanieRimMaterial);
+    beanieRim.position.y = 0.11;
+    beanie.add(beanieRim);
+
+    // Add beard stubble - small box below the face
+    const stubbleGeometry = new THREE.BoxGeometry(0.35, 0.1, 0.35);
+    const stubbleMaterial = new THREE.MeshBasicMaterial({ color: 0x3D3D3D });
+    const stubble = new THREE.Mesh(stubbleGeometry, stubbleMaterial);
+    stubble.position.y = -0.25;
+    stubble.position.z = 0.03;
+    this.head.add(stubble);
+
+    // Legs - tattered pants
     const legGeometry = new THREE.BoxGeometry(0.15, 0.5, 0.15);
-    const legMaterial = new THREE.MeshBasicMaterial({ color: 0x4D4D4D });
+    const legMaterial = new THREE.MeshBasicMaterial({ color: 0x1B2631 }); // Dark denim color
     
     this.leftLeg = new THREE.Mesh(legGeometry, legMaterial);
     this.leftLeg.position.set(0.15, -0.25, 0);
@@ -83,9 +119,22 @@ export class Player {
     this.rightLeg.position.set(-0.15, -0.25, 0);
     this.mesh.add(this.rightLeg);
 
-    // Arms
+    // Add tatters to the bottom of the pants
+    const leftLegTatterGeometry = new THREE.BoxGeometry(0.18, 0.07, 0.18);
+    const leftLegTatterMaterial = new THREE.MeshBasicMaterial({ color: 0x17202A });
+    const leftLegTatter = new THREE.Mesh(leftLegTatterGeometry, leftLegTatterMaterial);
+    leftLegTatter.position.y = -0.25;
+    this.leftLeg.add(leftLegTatter);
+
+    const rightLegTatterGeometry = new THREE.BoxGeometry(0.18, 0.07, 0.18);
+    const rightLegTatterMaterial = new THREE.MeshBasicMaterial({ color: 0x17202A });
+    const rightLegTatter = new THREE.Mesh(rightLegTatterGeometry, rightLegTatterMaterial);
+    rightLegTatter.position.y = -0.25;
+    this.rightLeg.add(rightLegTatter);
+
+    // Arms - tattered sleeves
     const armGeometry = new THREE.BoxGeometry(0.15, 0.5, 0.15);
-    const armMaterial = new THREE.MeshBasicMaterial({ color: 0x965A3E });
+    const armMaterial = new THREE.MeshBasicMaterial({ color: 0x4D3B21 }); // Match body color
     
     this.leftArm = new THREE.Mesh(armGeometry, armMaterial);
     this.leftArm.position.set(0.325, 0.35, 0);
@@ -94,6 +143,32 @@ export class Player {
     this.rightArm = new THREE.Mesh(armGeometry, armMaterial);
     this.rightArm.position.set(-0.325, 0.35, 0);
     this.mesh.add(this.rightArm);
+
+    // Add tatters to the sleeves
+    const leftArmTatterGeometry = new THREE.BoxGeometry(0.08, 0.1, 0.18);
+    const leftArmTatterMaterial = new THREE.MeshBasicMaterial({ color: 0x5D4037 });
+    const leftArmTatter = new THREE.Mesh(leftArmTatterGeometry, leftArmTatterMaterial);
+    leftArmTatter.position.set(0.04, -0.22, 0);
+    this.leftArm.add(leftArmTatter);
+
+    const rightArmTatterGeometry = new THREE.BoxGeometry(0.08, 0.1, 0.18);
+    const rightArmTatterMaterial = new THREE.MeshBasicMaterial({ color: 0x5D4037 });
+    const rightArmTatter = new THREE.Mesh(rightArmTatterGeometry, rightArmTatterMaterial);
+    rightArmTatter.position.set(-0.04, -0.22, 0);
+    this.rightArm.add(rightArmTatter);
+
+    // Add fingerless gloves
+    const leftGloveGeometry = new THREE.BoxGeometry(0.17, 0.15, 0.17);
+    const leftGloveMaterial = new THREE.MeshBasicMaterial({ color: 0x4A4A4A });
+    const leftGlove = new THREE.Mesh(leftGloveGeometry, leftGloveMaterial);
+    leftGlove.position.y = -0.2;
+    this.leftArm.add(leftGlove);
+
+    const rightGloveGeometry = new THREE.BoxGeometry(0.17, 0.15, 0.17);
+    const rightGloveMaterial = new THREE.MeshBasicMaterial({ color: 0x4A4A4A });
+    const rightGlove = new THREE.Mesh(rightGloveGeometry, rightGloveMaterial);
+    rightGlove.position.y = -0.2;
+    this.rightArm.add(rightGlove);
 
     // Set initial position
     this.mesh.position.set(position.x, position.y, position.z);
@@ -559,24 +634,39 @@ export class Player {
       this.onDeath();
     }
     
-    // Flash the player red
-    const originalBodyColor = (this.body.material as THREE.MeshBasicMaterial).color.clone();
-    const originalHeadColor = (this.head.material as THREE.MeshBasicMaterial).color.clone();
-    const originalArmColor = (this.leftArm.material as THREE.MeshBasicMaterial).color.clone();
+    // Store all original colors
+    const meshColorMap = new Map<THREE.Mesh, THREE.Color>();
     
-    // Make all body parts red
-    (this.body.material as THREE.MeshBasicMaterial).color.set(0xff0000);
-    (this.head.material as THREE.MeshBasicMaterial).color.set(0xff0000);
-    (this.leftArm.material as THREE.MeshBasicMaterial).color.set(0xff0000);
-    (this.rightArm.material as THREE.MeshBasicMaterial).color.set(0xff0000);
+    // Store original colors and collect all meshes to color red
+    const collectMeshes = (parent: THREE.Object3D) => {
+      parent.traverse(child => {
+        if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshBasicMaterial) {
+          // Only store if we haven't seen this mesh before
+          if (!meshColorMap.has(child)) {
+            meshColorMap.set(child, child.material.color.clone());
+          }
+        }
+      });
+    };
+    
+    // Collect all meshes from the entire player
+    collectMeshes(this.mesh);
+    
+    // Make all parts red
+    meshColorMap.forEach((originalColor, mesh) => {
+      if (mesh.material instanceof THREE.MeshBasicMaterial) {
+        mesh.material.color.set(0xff0000);
+      }
+    });
     
     // Wait a moment, then respawn
     this.deathTimeout = window.setTimeout(() => {
       // Restore original colors
-      (this.body.material as THREE.MeshBasicMaterial).color.copy(originalBodyColor);
-      (this.head.material as THREE.MeshBasicMaterial).color.copy(originalHeadColor);
-      (this.leftArm.material as THREE.MeshBasicMaterial).color.copy(originalArmColor);
-      (this.rightArm.material as THREE.MeshBasicMaterial).color.copy(originalArmColor);
+      meshColorMap.forEach((originalColor, mesh) => {
+        if (mesh.material instanceof THREE.MeshBasicMaterial) {
+          mesh.material.color.copy(originalColor);
+        }
+      });
       
       this.respawn();
     }, 500);
