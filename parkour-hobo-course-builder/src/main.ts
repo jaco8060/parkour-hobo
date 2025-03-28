@@ -449,6 +449,10 @@ class ParkourHoboCourseBuilder {
       this.player.destroy(); // Clean up event listeners
     }
     
+    // Disable orbit controls for camera
+    this.controls.enabled = false;
+    
+    // Create new player
     this.player = new Player(position, this.camera);
     this.scene.add(this.player.mesh);
     

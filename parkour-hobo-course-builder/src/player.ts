@@ -22,6 +22,13 @@ export class Player {
   private isMoving: boolean = false;
   private camera: THREE.PerspectiveCamera;
   private speed: number = 5; // Units per second
+  
+  // Rotation and camera properties
+  private cameraRotationSpeed: number = 2; // Radians per second
+  private cameraOffset: THREE.Vector3 = new THREE.Vector3(0, 2, 5);
+  private cameraTargetOffset: THREE.Vector3 = new THREE.Vector3(0, 0.5, 0);
+  private playerDirection: THREE.Vector3 = new THREE.Vector3(0, 0, -1);
+  private rotationAngle: number = 0;
 
   constructor(position: Vector3, camera: THREE.PerspectiveCamera) {
     this.mesh = new THREE.Group();
@@ -68,6 +75,9 @@ export class Player {
     // Set initial position
     this.mesh.position.set(position.x, position.y, position.z);
     
+    // Initialize player direction and update camera position
+    this.updateCamera();
+    
     // Set up control event listeners
     this.setupEventListeners();
     
@@ -77,18 +87,8 @@ export class Player {
 
   private setupEventListeners() {
     // Keyboard events
-    window.addEventListener('keydown', (event) => {
-      this.keys[event.key.toLowerCase()] = true;
-      
-      // Jump when jump key is pressed
-      if (event.key.toLowerCase() === this.controls.jump) {
-        this.jump();
-      }
-    });
-    
-    window.addEventListener('keyup', (event) => {
-      this.keys[event.key.toLowerCase()] = false;
-    });
+    window.addEventListener('keydown', this.keydownHandler);
+    window.addEventListener('keyup', this.keyupHandler);
   }
 
   update(delta: number, time: number) {
@@ -98,7 +98,8 @@ export class Player {
                     this.keys[this.controls.left] || 
                     this.keys[this.controls.right];
     
-    // Handle movement
+    // Handle rotation and movement
+    this.handleRotation(delta);
     this.handleMovement(delta);
     
     // Update camera position to follow player
@@ -147,33 +148,66 @@ export class Player {
     }
   }
   
+  private handleRotation(delta: number) {
+    // Rotate player and camera based on A/D keys
+    const rotationAmount = this.cameraRotationSpeed * delta;
+    
+    if (this.keys[this.controls.left]) {
+      // Rotate left
+      this.rotationAngle -= rotationAmount;
+      this.mesh.rotation.y += rotationAmount;
+      
+      // Update the player's direction vector
+      this.playerDirection.x = Math.sin(this.rotationAngle);
+      this.playerDirection.z = -Math.cos(this.rotationAngle);
+    }
+    
+    if (this.keys[this.controls.right]) {
+      // Rotate right
+      this.rotationAngle += rotationAmount;
+      this.mesh.rotation.y -= rotationAmount;
+      
+      // Update the player's direction vector
+      this.playerDirection.x = Math.sin(this.rotationAngle);
+      this.playerDirection.z = -Math.cos(this.rotationAngle);
+    }
+  }
+  
   private handleMovement(delta: number) {
     const distance = this.speed * delta;
     
-    // Use the custom control mappings
+    // Move forward/backward in the direction player is facing
     if (this.keys[this.controls.forward]) {
-      this.moveForward(distance);
+      this.mesh.position.x += this.playerDirection.x * distance;
+      this.mesh.position.z += this.playerDirection.z * distance;
     }
+    
     if (this.keys[this.controls.backward]) {
-      this.moveBackward(distance);
-    }
-    if (this.keys[this.controls.left]) {
-      this.moveLeft(distance);
-    }
-    if (this.keys[this.controls.right]) {
-      this.moveRight(distance);
+      this.mesh.position.x -= this.playerDirection.x * distance;
+      this.mesh.position.z -= this.playerDirection.z * distance;
     }
   }
   
   private updateCamera() {
-    // Update camera to follow player
-    const playerPos = this.mesh.position;
+    // Calculate camera position based on player position and rotation
+    const offsetX = Math.sin(this.rotationAngle) * this.cameraOffset.z;
+    const offsetZ = -Math.cos(this.rotationAngle) * this.cameraOffset.z;
+    
+    // Set camera position to offset behind player
     this.camera.position.set(
-      playerPos.x, 
-      playerPos.y + 2, 
-      playerPos.z + 5
+      this.mesh.position.x - offsetX, 
+      this.mesh.position.y + this.cameraOffset.y, 
+      this.mesh.position.z - offsetZ
     );
-    this.camera.lookAt(playerPos);
+    
+    // Camera looks at player's head level plus a small offset in the direction of movement
+    const lookAtTarget = new THREE.Vector3(
+      this.mesh.position.x + this.playerDirection.x * this.cameraTargetOffset.z,
+      this.mesh.position.y + this.cameraTargetOffset.y, 
+      this.mesh.position.z + this.playerDirection.z * this.cameraTargetOffset.z
+    );
+    
+    this.camera.lookAt(lookAtTarget);
   }
 
   jump() {
@@ -183,6 +217,7 @@ export class Player {
     }
   }
 
+  // Legacy movement methods (no longer used directly)
   moveForward(distance: number) {
     this.mesh.position.z -= distance;
   }
@@ -209,6 +244,11 @@ export class Player {
 
   setPosition(position: Vector3) {
     this.mesh.position.set(position.x, position.y, position.z);
+    // Reset rotation when position is explicitly set
+    this.rotationAngle = 0;
+    this.mesh.rotation.y = 0;
+    this.playerDirection.set(0, 0, -1);
+    this.updateCamera();
   }
   
   // Control management methods

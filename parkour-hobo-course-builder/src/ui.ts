@@ -689,8 +689,8 @@ export class UI {
       // Display space as "Space" for readability
       const jumpKey = controls.jump === ' ' ? 'Space' : controls.jump.toUpperCase();
       
-      // Update player mode toast
-      const controlsText = `Player Mode: ${controls.forward.toUpperCase()}${controls.left.toUpperCase()}${controls.backward.toUpperCase()}${controls.right.toUpperCase()} to move<br>${jumpKey} to jump`;
+      // Update player mode toast with new movement description
+      const controlsText = `Player Mode: ${controls.forward.toUpperCase()}/${controls.backward.toUpperCase()} to move forward/back<br>${controls.left.toUpperCase()}/${controls.right.toUpperCase()} to rotate<br>${jumpKey} to jump`;
       
       // Store for toast message
       if (document.querySelector('.tool-btn.active')?.getAttribute('data-tool') === 'player') {
