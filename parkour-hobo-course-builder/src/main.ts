@@ -847,16 +847,19 @@ class ParkourHoboCourseBuilder {
     const halfHeight = blockDef.dimensions.y / 2;
     const halfDepth = blockDef.dimensions.z / 2;
     
+    // Special case for garbage bag which needs a smaller collision box
+    const collisionFactor = this.selectedBlockType === 'garbageBag' ? 0.8 : 0.9;
+    
     newBlockBox.min.set(
-      position.x - halfWidth * 0.9, // Slightly reduce collision size for better stacking
-      position.y - halfHeight * 0.9,
-      position.z - halfDepth * 0.9
+      position.x - halfWidth * collisionFactor,
+      position.y - halfHeight * collisionFactor,
+      position.z - halfDepth * collisionFactor
     );
     
     newBlockBox.max.set(
-      position.x + halfWidth * 0.9,
-      position.y + halfHeight * 0.9,
-      position.z + halfDepth * 0.9
+      position.x + halfWidth * collisionFactor,
+      position.y + halfHeight * collisionFactor,
+      position.z + halfDepth * collisionFactor
     );
     
     // Check for collision with other blocks
@@ -870,16 +873,19 @@ class ParkourHoboCourseBuilder {
       const exHalfHeight = existingBlockDef.dimensions.y / 2;
       const exHalfDepth = existingBlockDef.dimensions.z / 2;
       
+      // Adjust collision factor for garbage bags
+      const exCollisionFactor = block.type === 'garbageBag' ? 0.8 : 0.9;
+      
       existingBlockBox.min.set(
-        block.position.x - exHalfWidth * 0.9,
-        block.position.y - exHalfHeight * 0.9,
-        block.position.z - exHalfDepth * 0.9
+        block.position.x - exHalfWidth * exCollisionFactor,
+        block.position.y - exHalfHeight * exCollisionFactor,
+        block.position.z - exHalfDepth * exCollisionFactor
       );
       
       existingBlockBox.max.set(
-        block.position.x + exHalfWidth * 0.9,
-        block.position.y + exHalfHeight * 0.9,
-        block.position.z + exHalfDepth * 0.9
+        block.position.x + exHalfWidth * exCollisionFactor,
+        block.position.y + exHalfHeight * exCollisionFactor,
+        block.position.z + exHalfDepth * exCollisionFactor
       );
       
       // Check if boxes intersect

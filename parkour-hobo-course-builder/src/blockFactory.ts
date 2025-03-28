@@ -132,39 +132,107 @@ export class BlockFactory {
     // Register Garbage Bag
     this.registerBlockType({
       type: 'garbageBag',
-      dimensions: { x: 2, y: 1, z: 2 },
+      dimensions: { x: 2, y: 1.5, z: 2 },
       color: '#4D4D4D',
       previewColor: '#4D4D4D80',
       createMesh: (position, rotation) => {
-        const geometry = new THREE.BoxGeometry(2, 1, 2);
-        const material = new THREE.MeshLambertMaterial({ color: '#4D4D4D' });
-        const mesh = new THREE.Mesh(geometry, material);
+        const garbageBagGroup = new THREE.Group();
         
-        mesh.position.set(position.x, position.y, position.z);
-        mesh.rotation.set(
+        // Create the main bag shape - slightly irregular
+        const bagGeometry = new THREE.SphereGeometry(1, 8, 8);
+        // Flatten the bottom
+        for (let i = 0; i < bagGeometry.attributes.position.count; i++) {
+          const y = bagGeometry.attributes.position.getY(i);
+          if (y < 0) {
+            bagGeometry.attributes.position.setY(i, y * 0.5);
+          }
+        }
+        bagGeometry.computeVertexNormals();
+        
+        // Scale to make it look more like a bag
+        bagGeometry.scale(1, 1.2, 1);
+        
+        const bagMaterial = new THREE.MeshLambertMaterial({ 
+          color: '#2C2C2C',
+          flatShading: true 
+        });
+        const bag = new THREE.Mesh(bagGeometry, bagMaterial);
+        
+        // Create the tied-up part at the top
+        const tieGeometry = new THREE.CylinderGeometry(0.3, 0.2, 0.3, 8);
+        const tieMaterial = new THREE.MeshLambertMaterial({ color: '#1A1A1A' });
+        const tie = new THREE.Mesh(tieGeometry, tieMaterial);
+        tie.position.y = 1.2;
+        
+        // Add subtle bulges to create a more organic look without sticks
+        const createBulge = (x: number, y: number, z: number, scale: THREE.Vector3) => {
+          const bulgeGeometry = new THREE.SphereGeometry(0.4, 6, 6);
+          const bulgeMaterial = new THREE.MeshLambertMaterial({ 
+            color: '#3A3A3A',
+            flatShading: true
+          });
+          const bulge = new THREE.Mesh(bulgeGeometry, bulgeMaterial);
+          bulge.position.set(x, y, z);
+          bulge.scale.copy(scale);
+          garbageBagGroup.add(bulge);
+        };
+        
+        // Add a few subtle bulges for texture
+        createBulge(0.6, 0.2, 0.5, new THREE.Vector3(1.2, 1, 1.3));
+        createBulge(-0.5, 0.4, 0.4, new THREE.Vector3(1.0, 0.8, 1.1));
+        createBulge(0.2, -0.2, -0.6, new THREE.Vector3(1.1, 0.9, 1.0));
+        
+        // Add all parts to the group
+        garbageBagGroup.add(bag);
+        garbageBagGroup.add(tie);
+        
+        // Position and rotate the entire group
+        garbageBagGroup.position.set(position.x, position.y, position.z);
+        garbageBagGroup.rotation.set(
           THREE.MathUtils.degToRad(rotation.x),
           THREE.MathUtils.degToRad(rotation.y),
           THREE.MathUtils.degToRad(rotation.z)
         );
         
-        return mesh;
+        return garbageBagGroup;
       },
       createPlaceholder: () => {
-        const geometry = new THREE.BoxGeometry(2, 1, 2);
-        const material = new THREE.MeshLambertMaterial({ 
+        // Simpler placeholder for better performance
+        const garbageBagGroup = new THREE.Group();
+        
+        // Create a simplified bag shape
+        const bagGeometry = new THREE.SphereGeometry(1, 8, 8);
+        // Flatten the bottom
+        for (let i = 0; i < bagGeometry.attributes.position.count; i++) {
+          const y = bagGeometry.attributes.position.getY(i);
+          if (y < 0) {
+            bagGeometry.attributes.position.setY(i, y * 0.5);
+          }
+        }
+        bagGeometry.scale(1, 1.2, 1);
+        
+        const bagMaterial = new THREE.MeshLambertMaterial({ 
           color: '#4D4D4D80',
           transparent: true,
           opacity: 0.5,
-          depthWrite: false
+          depthWrite: false,
+          flatShading: true
         });
         
-        return new THREE.Mesh(geometry, material);
+        const bag = new THREE.Mesh(bagGeometry, bagMaterial);
+        garbageBagGroup.add(bag);
+        
+        return garbageBagGroup;
       },
       highlightPlaceholder: (mesh, isValid) => {
-        if (mesh instanceof THREE.Mesh) {
-          const material = mesh.material as THREE.MeshLambertMaterial;
-          material.opacity = isValid ? 0.5 : 0.7;
-          material.color.set(isValid ? '#4D4D4D80' : '#FF0000');
+        if (mesh instanceof THREE.Group) {
+          mesh.traverse(child => {
+            if (child instanceof THREE.Mesh) {
+              const material = child.material as THREE.MeshLambertMaterial;
+              material.opacity = isValid ? 0.5 : 0.7;
+              material.color.set(isValid ? '#4D4D4D80' : '#FF0000');
+            }
+          });
         }
       }
     });
