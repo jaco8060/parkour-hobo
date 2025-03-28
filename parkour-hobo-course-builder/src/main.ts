@@ -4,7 +4,7 @@ import { Player } from './player';
 import { BlockFactory } from './blockFactory';
 import { CourseManager } from './courseManager';
 import { UI } from './ui';
-import { Course, Vector3, Block } from './types';
+import { Course, Vector3, Block, PlayerControls, DEFAULT_CONTROLS } from './types';
 import './styles.css';
 
 class ParkourHoboCourseBuilder {
@@ -26,7 +26,6 @@ class ParkourHoboCourseBuilder {
   private isBuilderMode: boolean = true;
   
   // Movement in player mode
-  private keys: { [key: string]: boolean } = {};
   private clock: THREE.Clock;
   
   // Add placeholder property
@@ -45,6 +44,10 @@ class ParkourHoboCourseBuilder {
   private deleteMaterial: THREE.MeshBasicMaterial;
   private selectedBlock: Block | null = null;
   private selectionMaterial: THREE.MeshBasicMaterial;
+
+  // Add this property to the class with proper initialization
+  private toast: HTMLDivElement | null = null;
+  private selectedBlockTooltip: HTMLDivElement | null = null;
 
   constructor() {
     // Initialize components
@@ -110,8 +113,9 @@ class ParkourHoboCourseBuilder {
     // Set up event listeners
     this.setupEventListeners();
     
-    // Initialize toolbar with select tool instead of rotate
+    // Initialize UI elements
     this.ui.initializeToolbar();
+    this.setupToolbar();
     
     // Start animation loop
     this.animate();
@@ -188,6 +192,22 @@ class ParkourHoboCourseBuilder {
         this.toggleMode();
       }
     });
+    
+    // Set up player controls callback
+    this.ui.setOnUpdateControls((controls: Partial<PlayerControls>) => {
+      if (this.player) {
+        this.player.updateControls(controls);
+        this.ui.updateControlsDisplay(this.player.getControls());
+      }
+    });
+    
+    // Override the UI's getControlsFromPlayer method using a closure
+    (this.ui as any).getControlsFromPlayer = () => {
+      if (this.player) {
+        return this.player.getControls();
+      }
+      return DEFAULT_CONTROLS;
+    };
   }
 
   private setupEventListeners() {
@@ -349,17 +369,17 @@ class ParkourHoboCourseBuilder {
         }
       }
       
-      // Player controls
-      this.keys[event.key.toLowerCase()] = true;
-      
-      // Jump with space in player mode
-      if (!this.isBuilderMode && (event.key === ' ' || event.key === 'Space') && this.player) {
-        this.player.jump();
+      // Player controls - forward jump key event to player only in player mode
+      if (!this.isBuilderMode && this.player && this.player.getControls) {
+        const controls = this.player.getControls();
+        if (event.key.toLowerCase() === controls.jump) {
+          this.player.jump();
+        }
       }
     });
     
     window.addEventListener('keyup', (event) => {
-      this.keys[event.key.toLowerCase()] = false;
+      // No action needed here anymore since player handles its own key events
     });
   }
 
@@ -426,18 +446,14 @@ class ParkourHoboCourseBuilder {
   private createPlayer(position: Vector3) {
     if (this.player) {
       this.scene.remove(this.player.mesh);
+      this.player.destroy(); // Clean up event listeners
     }
     
-    this.player = new Player(position);
+    this.player = new Player(position, this.camera);
     this.scene.add(this.player.mesh);
     
-    // Set camera to follow player
-    this.camera.position.set(
-      this.player.mesh.position.x, 
-      this.player.mesh.position.y + 2, 
-      this.player.mesh.position.z + 5
-    );
-    this.camera.lookAt(this.player.mesh.position);
+    // Update UI with player controls
+    this.ui.updateControlsDisplay(this.player.getControls());
   }
 
   private buildBlock() {
@@ -545,36 +561,6 @@ class ParkourHoboCourseBuilder {
     this.currentCourse = null;
   }
 
-  private handlePlayerMovement(delta: number) {
-    if (!this.isBuilderMode && this.player) {
-      const speed = 5; // Units per second
-      const distance = speed * delta;
-      
-      // WASD controls
-      if (this.keys['w']) {
-        this.player.moveForward(distance);
-      }
-      if (this.keys['s']) {
-        this.player.moveBackward(distance);
-      }
-      if (this.keys['a']) {
-        this.player.moveLeft(distance);
-      }
-      if (this.keys['d']) {
-        this.player.moveRight(distance);
-      }
-      
-      // Update camera to follow player
-      const playerPos = this.player.mesh.position;
-      this.camera.position.set(
-        playerPos.x, 
-        playerPos.y + 2, 
-        playerPos.z + 5
-      );
-      this.camera.lookAt(playerPos);
-    }
-  }
-
   private animate() {
     requestAnimationFrame(() => this.animate());
     
@@ -591,9 +577,7 @@ class ParkourHoboCourseBuilder {
     
     // Update player if in player mode
     if (!this.isBuilderMode && this.player) {
-      const isMoving = this.keys['w'] || this.keys['a'] || this.keys['s'] || this.keys['d'];
-      this.player.update(delta, time, isMoving);
-      this.handlePlayerMovement(delta);
+      this.player.update(delta, time);
     }
     
     // Render
@@ -948,6 +932,57 @@ class ParkourHoboCourseBuilder {
       this.highlightedBlock.unhighlight();
       this.highlightedBlock = null;
     }
+  }
+
+  private setupToolbar() {
+    const toolButtons = document.querySelectorAll('.tool-btn');
+    
+    toolButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tool = btn.getAttribute('data-tool') || 'build';
+        this.setTool(tool);
+      });
+    });
+    
+    // Create toast element for showing controls
+    this.toast = document.createElement('div');
+    this.toast.classList.add('controls-toast');
+    this.toast.style.position = 'fixed';
+    this.toast.style.top = '70px'; // Just below the header
+    this.toast.style.left = '50%';
+    this.toast.style.transform = 'translateX(-50%)';
+    this.toast.style.backgroundColor = '#333';
+    this.toast.style.color = 'white';
+    this.toast.style.padding = '10px 20px';
+    this.toast.style.borderRadius = '4px';
+    this.toast.style.fontSize = '12px';
+    this.toast.style.fontFamily = 'Press Start 2P, monospace';
+    this.toast.style.zIndex = '1000';
+    this.toast.style.border = '2px solid #4CAF50';
+    this.toast.style.display = 'none';
+    this.toast.style.textAlign = 'center';
+    this.toast.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+    document.body.appendChild(this.toast);
+    
+    // Create tooltip for selected block
+    this.selectedBlockTooltip = document.createElement('div');
+    this.selectedBlockTooltip.classList.add('selected-block-tooltip');
+    this.selectedBlockTooltip.style.position = 'absolute';
+    this.selectedBlockTooltip.style.backgroundColor = '#333';
+    this.selectedBlockTooltip.style.color = 'white';
+    this.selectedBlockTooltip.style.padding = '8px';
+    this.selectedBlockTooltip.style.borderRadius = '4px';
+    this.selectedBlockTooltip.style.fontSize = '12px';
+    this.selectedBlockTooltip.style.fontFamily = 'Press Start 2P, monospace';
+    this.selectedBlockTooltip.style.pointerEvents = 'none';
+    this.selectedBlockTooltip.style.zIndex = '1000';
+    this.selectedBlockTooltip.style.border = '2px solid #4CAF50';
+    this.selectedBlockTooltip.style.display = 'none';
+    this.selectedBlockTooltip.innerHTML = 'R: Rotate Block<br>Delete: Remove Block<br>Esc: Cancel Selection';
+    document.body.appendChild(this.selectedBlockTooltip);
+    
+    // Select build tool by default
+    this.setTool('build');
   }
 }
 

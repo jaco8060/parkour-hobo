@@ -1,4 +1,5 @@
 import { CourseManager } from './courseManager';
+import { PlayerControls, DEFAULT_CONTROLS } from './types';
 
 export class UI {
   private pixelatedMenu: HTMLElement;
@@ -15,6 +16,7 @@ export class UI {
   private toolbar: HTMLElement;
   private toast: HTMLElement | null = null;
   private selectedBlockTooltip: HTMLElement | null = null;
+  private controlsModal: HTMLElement | null = null;
   
   private courseManager: CourseManager;
   private onNewCourse: ((templateName: string) => void) | undefined;
@@ -24,6 +26,7 @@ export class UI {
   private onSaveCourse: (() => void) | undefined;
   private onReset: (() => void) | undefined;
   private onToolSelected: ((tool: string) => void) | undefined;
+  private onUpdateControls: ((controls: Partial<PlayerControls>) => void) | undefined;
   private toastTimeout: number | null = null;
 
   constructor(courseManager: CourseManager) {
@@ -206,7 +209,45 @@ export class UI {
       } else if (tool === 'delete') {
         this.showToast('Delete Mode: Click to delete block');
       } else if (tool === 'player') {
-        this.showToast('Player Mode: WASD to move<br>Space to jump');
+        // Use custom controls if available
+        const toolbarPlayer = document.querySelector('.tool-btn[data-tool="player"]') as HTMLElement;
+        if (toolbarPlayer) {
+          // Add a settings button to the player tool
+          if (!toolbarPlayer.querySelector('.settings-btn')) {
+            const settingsBtn = document.createElement('div');
+            settingsBtn.className = 'settings-btn';
+            settingsBtn.innerHTML = '⚙️';
+            settingsBtn.style.position = 'absolute';
+            settingsBtn.style.top = '2px';
+            settingsBtn.style.right = '2px';
+            settingsBtn.style.fontSize = '12px';
+            settingsBtn.style.cursor = 'pointer';
+            settingsBtn.title = 'Customize Controls';
+            
+            settingsBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (!this.controlsModal) {
+                this.createControlsModal();
+              }
+              
+              // Get current controls from the callback if available
+              if (this.onUpdateControls) {
+                // Use callback to get current controls
+                const currentControls = this.getControlsFromPlayer();
+                if (currentControls) {
+                  this.showControlsModal(currentControls);
+                } else {
+                  this.showControlsModal(DEFAULT_CONTROLS);
+                }
+              } else {
+                this.showControlsModal(DEFAULT_CONTROLS);
+              }
+            });
+            
+            toolbarPlayer.appendChild(settingsBtn);
+            toolbarPlayer.style.position = 'relative';
+          }
+        }
       }
     }
     
@@ -219,6 +260,13 @@ export class UI {
     if (tool === 'player') {
       // This will be handled by the main class
     }
+  }
+
+  // Helper method to get controls from the player instance
+  private getControlsFromPlayer(): PlayerControls | null {
+    // This would be populated by the setOnUpdateControls callback
+    // which should be connected to the player's getControls method
+    return null;
   }
 
   // Method to show a toast notification
@@ -444,5 +492,215 @@ export class UI {
         toolIcon.textContent = '👆'; // Selection cursor icon
       }
     }
+  }
+
+  // Add method to create controls modal
+  private createControlsModal() {
+    // Create modal if it doesn't exist
+    if (!this.controlsModal) {
+      this.controlsModal = document.createElement('div');
+      this.controlsModal.classList.add('modal');
+      this.controlsModal.classList.add('hidden');
+      
+      const modalContent = document.createElement('div');
+      modalContent.classList.add('modal-content');
+      
+      const modalTitle = document.createElement('h2');
+      modalTitle.textContent = 'Customize Controls';
+      modalContent.appendChild(modalTitle);
+      
+      // Create form for control inputs
+      const controlsForm = document.createElement('div');
+      controlsForm.classList.add('controls-form');
+      
+      // Add styles to the control form
+      controlsForm.style.display = 'grid';
+      controlsForm.style.gridTemplateColumns = 'auto 1fr';
+      controlsForm.style.gap = '10px';
+      controlsForm.style.marginBottom = '20px';
+      
+      // Create inputs for each control
+      const controls = ['forward', 'backward', 'left', 'right', 'jump'];
+      const controlLabels = ['Forward', 'Backward', 'Left', 'Right', 'Jump'];
+      
+      controls.forEach((control, index) => {
+        const label = document.createElement('label');
+        label.textContent = controlLabels[index] + ':';
+        label.style.color = 'white';
+        label.style.fontFamily = "'Press Start 2P', monospace";
+        label.style.fontSize = '12px';
+        
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.id = `control-${control}`;
+        input.maxLength = 1;
+        input.style.backgroundColor = '#333';
+        input.style.color = 'white';
+        input.style.border = '2px solid #4CAF50';
+        input.style.padding = '5px 10px';
+        input.style.fontFamily = "'Press Start 2P', monospace";
+        input.style.fontSize = '12px';
+        input.style.textAlign = 'center';
+        
+        controlsForm.appendChild(label);
+        controlsForm.appendChild(input);
+      });
+      
+      modalContent.appendChild(controlsForm);
+      
+      // Add buttons
+      const buttonContainer = document.createElement('div');
+      buttonContainer.style.display = 'flex';
+      buttonContainer.style.justifyContent = 'space-between';
+      
+      const saveButton = document.createElement('button');
+      saveButton.textContent = 'Save Controls';
+      saveButton.style.backgroundColor = '#4CAF50';
+      saveButton.style.color = 'white';
+      saveButton.style.border = 'none';
+      saveButton.style.padding = '10px 20px';
+      saveButton.style.fontFamily = "'Press Start 2P', monospace";
+      saveButton.style.fontSize = '14px';
+      saveButton.style.cursor = 'pointer';
+      
+      saveButton.addEventListener('click', () => {
+        this.saveControls();
+      });
+      
+      const resetButton = document.createElement('button');
+      resetButton.textContent = 'Reset to Default';
+      resetButton.style.backgroundColor = '#f44336';
+      resetButton.style.color = 'white';
+      resetButton.style.border = 'none';
+      resetButton.style.padding = '10px 20px';
+      resetButton.style.fontFamily = "'Press Start 2P', monospace";
+      resetButton.style.fontSize = '14px';
+      resetButton.style.cursor = 'pointer';
+      
+      resetButton.addEventListener('click', () => {
+        this.resetControlsToDefault();
+      });
+      
+      const closeButton = document.createElement('button');
+      closeButton.textContent = 'Cancel';
+      closeButton.style.backgroundColor = '#555';
+      closeButton.style.color = 'white';
+      closeButton.style.border = 'none';
+      closeButton.style.padding = '10px 20px';
+      closeButton.style.fontFamily = "'Press Start 2P', monospace";
+      closeButton.style.fontSize = '14px';
+      closeButton.style.cursor = 'pointer';
+      
+      closeButton.addEventListener('click', () => {
+        this.hideControlsModal();
+      });
+      
+      buttonContainer.appendChild(resetButton);
+      buttonContainer.appendChild(closeButton);
+      buttonContainer.appendChild(saveButton);
+      
+      modalContent.appendChild(buttonContainer);
+      
+      this.controlsModal.appendChild(modalContent);
+      document.body.appendChild(this.controlsModal);
+    }
+  }
+  
+  // Show controls modal with current controls
+  public showControlsModal(currentControls: PlayerControls) {
+    if (!this.controlsModal) {
+      this.createControlsModal();
+    }
+    
+    // Update input values
+    Object.keys(currentControls).forEach(key => {
+      const input = document.getElementById(`control-${key}`) as HTMLInputElement;
+      if (input) {
+        let value = currentControls[key as keyof PlayerControls];
+        // Display space as "Space" for readability
+        if (value === ' ') {
+          value = 'Space';
+        }
+        input.value = value;
+      }
+    });
+    
+    // Show modal
+    if (this.controlsModal) {
+      this.controlsModal.classList.remove('hidden');
+    }
+  }
+  
+  // Hide controls modal
+  public hideControlsModal() {
+    if (this.controlsModal) {
+      this.controlsModal.classList.add('hidden');
+    }
+  }
+  
+  // Save controls from form
+  private saveControls() {
+    if (!this.onUpdateControls) return;
+    
+    const newControls: Partial<PlayerControls> = {};
+    
+    // Get values from inputs
+    const controls = ['forward', 'backward', 'left', 'right', 'jump'];
+    controls.forEach(control => {
+      const input = document.getElementById(`control-${control}`) as HTMLInputElement;
+      if (input && input.value) {
+        let value = input.value.toLowerCase();
+        // Convert "Space" to actual space character
+        if (value === 'space') {
+          value = ' ';
+        }
+        newControls[control as keyof PlayerControls] = value;
+      }
+    });
+    
+    // Update controls
+    this.onUpdateControls(newControls);
+    
+    // Hide modal
+    this.hideControlsModal();
+    
+    // Show toast notification
+    this.showToast('Controls updated successfully!');
+  }
+  
+  // Reset controls to default
+  private resetControlsToDefault() {
+    if (!this.onUpdateControls) return;
+    
+    // Update with defaults
+    this.onUpdateControls(DEFAULT_CONTROLS);
+    
+    // Hide modal
+    this.hideControlsModal();
+    
+    // Show toast notification
+    this.showToast('Controls reset to default');
+  }
+  
+  // Update control display elements
+  public updateControlsDisplay(controls: PlayerControls) {
+    // Update toast message for player mode
+    if (controls) {
+      // Display space as "Space" for readability
+      const jumpKey = controls.jump === ' ' ? 'Space' : controls.jump.toUpperCase();
+      
+      // Update player mode toast
+      const controlsText = `Player Mode: ${controls.forward.toUpperCase()}${controls.left.toUpperCase()}${controls.backward.toUpperCase()}${controls.right.toUpperCase()} to move<br>${jumpKey} to jump`;
+      
+      // Store for toast message
+      if (document.querySelector('.tool-btn.active')?.getAttribute('data-tool') === 'player') {
+        this.showToast(controlsText);
+      }
+    }
+  }
+  
+  // Add method to set control update callback
+  public setOnUpdateControls(callback: (controls: Partial<PlayerControls>) => void) {
+    this.onUpdateControls = callback;
   }
 }

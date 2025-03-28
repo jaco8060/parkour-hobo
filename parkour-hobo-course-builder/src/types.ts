@@ -6,6 +6,24 @@ export interface Vector3 {
   z: number;
 }
 
+// Define the control mapping interface
+export interface PlayerControls {
+  forward: string;
+  backward: string;
+  left: string;
+  right: string;
+  jump: string;
+}
+
+// Define default control mappings
+export const DEFAULT_CONTROLS: PlayerControls = {
+  forward: 'w',
+  backward: 's',
+  left: 'a',
+  right: 'd',
+  jump: ' ' // Space
+};
+
 export interface Block {
   position: Vector3;
   rotation: Vector3;
